@@ -71,3 +71,26 @@ fn validator_rejects_malformed_required_main_json() {
     assert!(error.to_string().contains("Airports.json"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_duplicate_ids_in_primary_tables() {
+    for file_name in [
+        "Airports.json",
+        "Runways.json",
+        "Terminals.json",
+        "Navaids.json",
+        "Waypoints.json",
+        "Airways.json",
+        "AirwayLegs.json",
+        "ILSes.json",
+    ] {
+        let root = candidate_fixture();
+        fs::write(root.join(file_name), r#"[{"ID":7},{"ID":7}]"#).unwrap();
+
+        let error = validate_candidate(&root).expect_err("duplicate ID must fail validation");
+
+        assert!(error.to_string().contains(file_name));
+        assert!(error.to_string().contains("duplicate ID 7"));
+        fs::remove_dir_all(root).unwrap();
+    }
+}

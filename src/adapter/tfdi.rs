@@ -29,7 +29,7 @@ struct CycleFile<'a> {
 }
 
 #[derive(Deserialize)]
-struct TerminalId {
+struct IdRow {
     #[serde(rename = "ID")]
     id: u64,
 }
@@ -61,13 +61,22 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         .with_context(|| format!("failed to parse required TFDI file: {}", path.display()))?;
     }
 
-    let terminals_path = candidate_dir.join("Terminals.json");
-    let terminals: Vec<TerminalId> = serde_json::from_reader(
-        fs::File::open(&terminals_path)
-            .with_context(|| format!("failed to open {}", terminals_path.display()))?,
-    )
-    .with_context(|| format!("failed to parse {}", terminals_path.display()))?;
-    let terminal_ids: HashSet<u64> = terminals.into_iter().map(|terminal| terminal.id).collect();
+    let mut terminal_ids = HashSet::new();
+    for file_name in [
+        "Airports.json",
+        "Runways.json",
+        "Terminals.json",
+        "Navaids.json",
+        "Waypoints.json",
+        "Airways.json",
+        "AirwayLegs.json",
+        "ILSes.json",
+    ] {
+        let ids = load_unique_ids(&candidate_dir.join(file_name))?;
+        if file_name == "Terminals.json" {
+            terminal_ids = ids;
+        }
+    }
 
     let procedure_dir = candidate_dir.join("ProcedureLegs");
     for entry in fs::read_dir(&procedure_dir)
@@ -105,6 +114,20 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn load_unique_ids(path: &Path) -> Result<HashSet<u64>> {
+    let rows: Vec<IdRow> = serde_json::from_reader(
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?,
+    )
+    .with_context(|| format!("failed to parse IDs from {}", path.display()))?;
+    let mut ids = HashSet::with_capacity(rows.len());
+    for row in rows {
+        if !ids.insert(row.id) {
+            bail!("{} contains duplicate ID {}", path.display(), row.id);
+        }
+    }
+    Ok(ids)
 }
 
 pub fn render_cycle_files(cycle: &CycleMetadata) -> Result<TfdiCycleFiles> {
