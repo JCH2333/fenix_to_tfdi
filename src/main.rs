@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rayon::prelude::*;
 use rusqlite::Connection;
 
@@ -184,6 +184,7 @@ fn main() {
 
 fn run() -> Result<()> {
     let config = parse_args()?;
+    validate_explicit_input_files(&config)?;
     let prewarm_handle = start_output_prewarm(&config);
     let airway_reference_json_prewarm_handle = start_airway_reference_json_prewarm(&config);
     let table_index_prewarm_handle = start_table_index_prewarm(&config);
@@ -214,6 +215,36 @@ fn run() -> Result<()> {
     };
 
     print_output_reports(&output_results, total_start.elapsed());
+
+    Ok(())
+}
+
+fn validate_explicit_input_files(config: &config::AppConfig) -> Result<()> {
+    let Some(db_path) = config.db_path.as_deref() else {
+        return Ok(());
+    };
+    if !db_path.is_file() {
+        bail!("Fenix database does not exist: {}", db_path.display());
+    }
+
+    let rte_seg_path = config
+        .rte_seg_path
+        .as_deref()
+        .context("explicit conversion is missing RTE_SEG.csv")?;
+    if !rte_seg_path.is_file() {
+        bail!("RTE_SEG.csv does not exist: {}", rte_seg_path.display());
+    }
+
+    let reference_dir = config
+        .reference_dir
+        .as_deref()
+        .context("explicit conversion is missing the official TFDI template")?;
+    if !reference_dir.is_dir() {
+        bail!(
+            "official TFDI template does not exist: {}",
+            reference_dir.display()
+        );
+    }
 
     Ok(())
 }

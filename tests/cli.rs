@@ -35,10 +35,11 @@ fn explicit_paths_reach_conversion_input_validation() {
         .arg(&output_dir)
         .output()
         .expect("run converter with explicit paths");
-    let _ = std::fs::remove_dir_all(&output_dir);
 
     assert!(!output.status.success());
+    assert!(!output_dir.exists(), "invalid inputs created candidate output");
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("unsupported arguments"), "{stderr}");
     assert!(stderr.contains("RTE_SEG") || stderr.contains("database"), "{stderr}");
+    let _ = std::fs::remove_dir_all(&output_dir);
 }
