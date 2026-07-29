@@ -275,6 +275,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
 
     let procedure_dir = candidate_dir.join("ProcedureLegs");
+    let mut procedure_file_ids = HashSet::new();
     for entry in fs::read_dir(&procedure_dir)
         .with_context(|| format!("failed to read {}", procedure_dir.display()))?
     {
@@ -307,6 +308,14 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 entry.path().display()
             );
         }
+        procedure_file_ids.insert(id);
+    }
+    if let Some(id) = terminal_ids.difference(&procedure_file_ids).min() {
+        bail!(
+            "terminal ID {} has no procedure file: {}",
+            id,
+            procedure_dir.join(format!("TermID_{id}.json")).display()
+        );
     }
 
     Ok(())
