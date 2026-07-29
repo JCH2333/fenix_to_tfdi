@@ -5,4 +5,3 @@ pub struct CycleMetadata {
     pub start_date: String,
     pub end_date: String,
 }
-

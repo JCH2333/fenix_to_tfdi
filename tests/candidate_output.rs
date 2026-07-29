@@ -22,7 +22,10 @@ fn candidate_starts_as_a_complete_copy_of_the_official_template() {
 
     copy_template_to_candidate(&reference, &output).expect("copy official template");
 
-    assert_eq!(fs::read_to_string(output.join("SurfaceTypes.json")).unwrap(), "[]");
+    assert_eq!(
+        fs::read_to_string(output.join("SurfaceTypes.json")).unwrap(),
+        "[]"
+    );
     assert_eq!(
         fs::read_to_string(output.join("ProcedureLegs").join("TermID_1.json")).unwrap(),
         "[{\"ID\":1}]"

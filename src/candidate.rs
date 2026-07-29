@@ -11,10 +11,7 @@ pub fn copy_template_to_candidate(reference_dir: &Path, output_dir: &Path) -> Re
         );
     }
     if output_dir.exists() {
-        bail!(
-            "candidate output already exists: {}",
-            output_dir.display()
-        );
+        bail!("candidate output already exists: {}", output_dir.display());
     }
 
     copy_directory(reference_dir, output_dir)
@@ -22,21 +19,29 @@ pub fn copy_template_to_candidate(reference_dir: &Path, output_dir: &Path) -> Re
 
 fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
     fs::create_dir_all(destination).with_context(|| {
-        format!("failed to create candidate directory: {}", destination.display())
+        format!(
+            "failed to create candidate directory: {}",
+            destination.display()
+        )
     })?;
 
     for entry in fs::read_dir(source)
         .with_context(|| format!("failed to read template directory: {}", source.display()))?
     {
-        let entry = entry.with_context(|| {
-            format!("failed to read template entry under {}", source.display())
-        })?;
+        let entry = entry
+            .with_context(|| format!("failed to read template entry under {}", source.display()))?;
         let file_type = entry.file_type().with_context(|| {
-            format!("failed to inspect template entry: {}", entry.path().display())
+            format!(
+                "failed to inspect template entry: {}",
+                entry.path().display()
+            )
         })?;
         let target = destination.join(entry.file_name());
         if file_type.is_symlink() {
-            bail!("template contains unsupported symbolic link: {}", entry.path().display());
+            bail!(
+                "template contains unsupported symbolic link: {}",
+                entry.path().display()
+            );
         }
         if file_type.is_dir() {
             copy_directory(&entry.path(), &target)?;
@@ -53,4 +58,3 @@ fn copy_directory(source: &Path, destination: &Path) -> Result<()> {
 
     Ok(())
 }
-

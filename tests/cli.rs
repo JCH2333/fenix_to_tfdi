@@ -13,7 +13,10 @@ fn help_lists_explicit_conversion_paths() {
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help is utf-8");
     for option in ["--db", "--rte-seg", "--reference", "--output"] {
-        assert!(stdout.contains(option), "missing {option} in help:\n{stdout}");
+        assert!(
+            stdout.contains(option),
+            "missing {option} in help:\n{stdout}"
+        );
     }
 }
 
@@ -39,10 +42,16 @@ fn explicit_paths_reach_conversion_input_validation() {
         .expect("run converter with explicit paths");
 
     assert!(!output.status.success());
-    assert!(!output_dir.exists(), "invalid inputs created candidate output");
+    assert!(
+        !output_dir.exists(),
+        "invalid inputs created candidate output"
+    );
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!stderr.contains("unsupported arguments"), "{stderr}");
-    assert!(stderr.contains("RTE_SEG") || stderr.contains("database"), "{stderr}");
+    assert!(
+        stderr.contains("RTE_SEG") || stderr.contains("database"),
+        "{stderr}"
+    );
     let _ = std::fs::remove_dir_all(&output_dir);
 }
 
@@ -63,10 +72,28 @@ fn explicit_conversion_initializes_candidate_from_reference() {
 
     let connection = Connection::open(&db_path).unwrap();
     for table in [
-        "AirportCommunication", "AirportLookup", "Airports", "AirwayLegs", "Airways",
-        "config", "Gls", "GridMora", "Holdings", "ILSes", "Markers", "MarkerTypes",
-        "NavaidLookup", "Navaids", "NavaidTypes", "Runways", "SurfaceTypes",
-        "TerminalLegs", "TerminalLegsEx", "Terminals", "TrmLegTypes", "WaypointLookup",
+        "AirportCommunication",
+        "AirportLookup",
+        "Airports",
+        "AirwayLegs",
+        "Airways",
+        "config",
+        "Gls",
+        "GridMora",
+        "Holdings",
+        "ILSes",
+        "Markers",
+        "MarkerTypes",
+        "NavaidLookup",
+        "Navaids",
+        "NavaidTypes",
+        "Runways",
+        "SurfaceTypes",
+        "TerminalLegs",
+        "TerminalLegsEx",
+        "Terminals",
+        "TrmLegTypes",
+        "WaypointLookup",
         "Waypoints",
     ] {
         connection
@@ -87,7 +114,10 @@ fn explicit_conversion_initializes_candidate_from_reference() {
         .output()
         .expect("run converter with minimal inputs");
 
-    assert!(!result.status.success(), "minimal fixture unexpectedly converted");
+    assert!(
+        !result.status.success(),
+        "minimal fixture unexpectedly converted"
+    );
     assert_eq!(
         std::fs::read_to_string(output_dir.join("SurfaceTypes.json")).unwrap(),
         "[]"
