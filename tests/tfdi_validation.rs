@@ -189,3 +189,21 @@ fn validator_rejects_airway_leg_with_missing_references() {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn validator_rejects_lookup_without_matching_primary_row() {
+    for (lookup_file, primary_file) in [
+        ("NavaidLookup.json", "Navaids.json"),
+        ("WaypointLookup.json", "Waypoints.json"),
+    ] {
+        let root = candidate_fixture();
+        fs::write(root.join(primary_file), r#"[{"ID":1}]"#).unwrap();
+        fs::write(root.join(lookup_file), r#"[{"ID":99}]"#).unwrap();
+
+        let error = validate_candidate(&root).expect_err("orphan lookup must fail validation");
+
+        assert!(error.to_string().contains(lookup_file));
+        assert!(error.to_string().contains("ID 99"));
+        fs::remove_dir_all(root).unwrap();
+    }
+}

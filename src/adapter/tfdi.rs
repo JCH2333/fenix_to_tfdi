@@ -135,6 +135,17 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         }
     }
 
+    validate_lookup_ids(
+        &candidate_dir.join("NavaidLookup.json"),
+        &navaid_ids,
+        "Navaids.json",
+    )?;
+    validate_lookup_ids(
+        &candidate_dir.join("WaypointLookup.json"),
+        &waypoint_ids,
+        "Waypoints.json",
+    )?;
+
     let runways_path = candidate_dir.join("Runways.json");
     let runways: Vec<RunwayAirportReference> = serde_json::from_reader(
         fs::File::open(&runways_path)
@@ -313,6 +324,24 @@ fn load_unique_ids(path: &Path) -> Result<HashSet<u64>> {
         }
     }
     Ok(ids)
+}
+
+fn validate_lookup_ids(path: &Path, primary_ids: &HashSet<u64>, primary_file: &str) -> Result<()> {
+    let rows: Vec<IdRow> = serde_json::from_reader(
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?,
+    )
+    .with_context(|| format!("failed to parse lookup IDs from {}", path.display()))?;
+    for row in rows {
+        if !primary_ids.contains(&row.id) {
+            bail!(
+                "{} lookup ID {} has no matching row in {}",
+                path.display(),
+                row.id,
+                primary_file
+            );
+        }
+    }
+    Ok(())
 }
 
 pub fn render_cycle_files(cycle: &CycleMetadata) -> Result<TfdiCycleFiles> {
