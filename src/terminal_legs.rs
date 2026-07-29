@@ -305,8 +305,11 @@ pub(crate) fn export_terminal_legs(
     navaid_id_index: &NavaidIdIndex,
 ) -> Result<TerminalLegExportStats> {
     let excluded_existing_terminal_ids = load_excluded_existing_terminal_ids(output_dir)?;
+    let excluded_source_terminal_ids =
+        with_connection(db_path, fetch_excluded_source_terminal_ids)?;
     let cleanup_required = procedure_dir_has_existing_files_from(output_dir, start_terminal_id)?
-        || !excluded_existing_terminal_ids.is_empty();
+        || !excluded_existing_terminal_ids.is_empty()
+        || !excluded_source_terminal_ids.is_empty();
     let files_may_already_exist = cleanup_required;
     let db_read_start = Instant::now();
     let (
@@ -319,15 +322,22 @@ pub(crate) fn export_terminal_legs(
         mut detail,
     ) = with_connection(db_path, |conn| {
         let t_terminal_legs = Instant::now();
-        let terminal_legs = fetch_terminal_legs(conn, start_terminal_id)?;
+        let mut terminal_legs = fetch_terminal_legs(conn, start_terminal_id)?;
+        terminal_legs
+            .retain(|leg| !excluded_source_terminal_ids.contains(&leg.terminal_id));
         let db_terminal_legs = t_terminal_legs.elapsed();
 
         let t_terminal_metadata = Instant::now();
-        let runway_ids_by_terminal =
+        let mut runway_ids_by_terminal =
             fetch_runway_ids_by_terminal_after_start(conn, start_terminal_id)?;
+        runway_ids_by_terminal
+            .retain(|terminal_id, _| !excluded_source_terminal_ids.contains(terminal_id));
         let terminal_ids_for_cleanup = if cleanup_required {
             let mut terminal_ids = fetch_all_terminal_ids(conn)?;
-            terminal_ids.retain(|id| !excluded_existing_terminal_ids.contains(id));
+            terminal_ids.retain(|id| {
+                !excluded_existing_terminal_ids.contains(id)
+                    && !excluded_source_terminal_ids.contains(id)
+            });
             Some(terminal_ids)
         } else {
             None
@@ -920,4 +930,50 @@ mod tests {
 
         fs::remove_dir_all(&output_dir).expect("remove temp dir");
     }
+
+    #[test]
+    fn source_terminal_filter_ids_include_new_invalid_zuls_procedures() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE Terminals (ID INTEGER, ICAO TEXT, Name TEXT, FullName TEXT)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO Terminals VALUES (174768,'ZULS','R10L','R10L RNAV 10L'),(200000,'ZBAA','R10L','R10L RNAV 10L')",
+                [],
+            )
+            .unwrap();
+
+        let excluded = fetch_excluded_source_terminal_ids(&connection).unwrap();
+
+        assert_eq!(excluded, std::iter::once(174768).collect());
+    }
+}
+
+fn fetch_excluded_source_terminal_ids(conn: &Connection) -> Result<FxHashSet<i64>> {
+    let mut statement = conn
+        .prepare("SELECT ID, ICAO, Name, FullName FROM Terminals")
+        .context("failed to query source terminal filters")?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+                row.get::<_, Option<String>>(3)?,
+            ))
+        })
+        .context("failed to iterate source terminal filters")?;
+
+    let mut excluded = fast_hash_set();
+    for row in rows {
+        let (id, icao, name, full_name) = row.context("failed to read source terminal filter")?;
+        if is_excluded_terminal(icao.as_deref(), name.as_deref(), full_name.as_deref()) {
+            excluded.insert(id);
+        }
+    }
+    Ok(excluded)
 }
