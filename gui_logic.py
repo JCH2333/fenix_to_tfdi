@@ -43,5 +43,26 @@ def detect_paths(search_root: Path | str) -> DetectedPaths:
     return DetectedPaths(database, route_segments, reference)
 
 
+def build_conversion_command(
+    executable: Path | str,
+    database: Path | str,
+    route_segments: Path | str,
+    reference: Path | str,
+    output: Path | str,
+) -> list[str]:
+    """构造显式输入、隔离输出的转换命令。"""
+    return [
+        str(executable),
+        "--db",
+        str(database),
+        "--rte-seg",
+        str(route_segments),
+        "--reference",
+        str(reference),
+        "--output",
+        str(output),
+    ]
+
+
 def _first_file(candidates: tuple[Path, ...]) -> Path | None:
     return next((path for path in candidates if path.is_file()), None)

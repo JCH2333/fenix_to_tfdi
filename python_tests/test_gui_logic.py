@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from gui_logic import detect_paths
+from gui_logic import build_conversion_command, detect_paths
 
 
 class PathDetectionTests(unittest.TestCase):
@@ -39,6 +39,32 @@ class PathDetectionTests(unittest.TestCase):
         self.assertEqual(detected.database, database)
         self.assertEqual(detected.route_segments, route_segments)
         self.assertEqual(detected.reference, template)
+
+
+class ConversionCommandTests(unittest.TestCase):
+    def test_builds_explicit_isolated_conversion_command(self):
+        command = build_conversion_command(
+            Path("fenix_to_tfdi.exe"),
+            Path("input/nd.db3"),
+            Path("input/RTE_SEG.csv"),
+            Path("official/Nav-Primary"),
+            Path("output/2607-test"),
+        )
+
+        self.assertEqual(
+            command,
+            [
+                "fenix_to_tfdi.exe",
+                "--db",
+                os.fspath(Path("input/nd.db3")),
+                "--rte-seg",
+                os.fspath(Path("input/RTE_SEG.csv")),
+                "--reference",
+                os.fspath(Path("official/Nav-Primary")),
+                "--output",
+                os.fspath(Path("output/2607-test")),
+            ],
+        )
 
 
 if __name__ == "__main__":
