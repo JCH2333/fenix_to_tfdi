@@ -1,9 +1,16 @@
 /target/
 /output/
 /test-output/
+/backups/
+/diagnostics/
+/decompiled/
+/external-test-packages/
 *.tmp
 *.bak
 *.db3
+*.s3db
+*-wal
+*-shm
 *.csv
 *.zip
-
+*.7z
