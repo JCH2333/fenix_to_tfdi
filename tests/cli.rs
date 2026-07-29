@@ -1,6 +1,8 @@
 use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rusqlite::Connection;
+
 #[test]
 fn help_lists_explicit_conversion_paths() {
     let output = Command::new(env!("CARGO_BIN_EXE_fenix_to_tfdi"))
@@ -42,4 +44,53 @@ fn explicit_paths_reach_conversion_input_validation() {
     assert!(!stderr.contains("unsupported arguments"), "{stderr}");
     assert!(stderr.contains("RTE_SEG") || stderr.contains("database"), "{stderr}");
     let _ = std::fs::remove_dir_all(&output_dir);
+}
+
+#[test]
+fn explicit_conversion_initializes_candidate_from_reference() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("fenix_to_tfdi_run_{unique}"));
+    let reference = root.join("official").join("Nav-Primary");
+    let output_dir = root.join("candidate").join("Nav-Primary");
+    let db_path = root.join("nd.db3");
+    let rte_seg_path = root.join("RTE_SEG.csv");
+    std::fs::create_dir_all(&reference).unwrap();
+    std::fs::write(reference.join("SurfaceTypes.json"), "[]").unwrap();
+    std::fs::write(&rte_seg_path, "RTE_SEG_ID,TXT_DESIG\n").unwrap();
+
+    let connection = Connection::open(&db_path).unwrap();
+    for table in [
+        "AirportCommunication", "AirportLookup", "Airports", "AirwayLegs", "Airways",
+        "config", "Gls", "GridMora", "Holdings", "ILSes", "Markers", "MarkerTypes",
+        "NavaidLookup", "Navaids", "NavaidTypes", "Runways", "SurfaceTypes",
+        "TerminalLegs", "TerminalLegsEx", "Terminals", "TrmLegTypes", "WaypointLookup",
+        "Waypoints",
+    ] {
+        connection
+            .execute(&format!("CREATE TABLE \"{table}\" (ID INTEGER)"), [])
+            .unwrap();
+    }
+    drop(connection);
+
+    let result = Command::new(env!("CARGO_BIN_EXE_fenix_to_tfdi"))
+        .arg("--db")
+        .arg(&db_path)
+        .arg("--rte-seg")
+        .arg(&rte_seg_path)
+        .arg("--reference")
+        .arg(&reference)
+        .arg("--output")
+        .arg(&output_dir)
+        .output()
+        .expect("run converter with minimal inputs");
+
+    assert!(!result.status.success(), "minimal fixture unexpectedly converted");
+    assert_eq!(
+        std::fs::read_to_string(output_dir.join("SurfaceTypes.json")).unwrap(),
+        "[]"
+    );
+    std::fs::remove_dir_all(root).unwrap();
 }

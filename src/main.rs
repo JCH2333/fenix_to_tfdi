@@ -14,6 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use fenix_to_tfdi::candidate::copy_template_to_candidate;
 use rayon::prelude::*;
 use rusqlite::Connection;
 
@@ -185,6 +186,7 @@ fn main() {
 fn run() -> Result<()> {
     let config = parse_args()?;
     validate_explicit_input_files(&config)?;
+    initialize_explicit_candidate(&config)?;
     let prewarm_handle = start_output_prewarm(&config);
     let airway_reference_json_prewarm_handle = start_airway_reference_json_prewarm(&config);
     let table_index_prewarm_handle = start_table_index_prewarm(&config);
@@ -217,6 +219,22 @@ fn run() -> Result<()> {
     print_output_reports(&output_results, total_start.elapsed());
 
     Ok(())
+}
+
+fn initialize_explicit_candidate(config: &config::AppConfig) -> Result<()> {
+    if config.db_path.is_none() {
+        return Ok(());
+    }
+
+    let reference_dir = config
+        .reference_dir
+        .as_deref()
+        .context("explicit conversion is missing the official TFDI template")?;
+    let output = config
+        .output_targets
+        .first()
+        .context("explicit conversion is missing a candidate output")?;
+    copy_template_to_candidate(reference_dir, &output.path)
 }
 
 fn validate_explicit_input_files(config: &config::AppConfig) -> Result<()> {
