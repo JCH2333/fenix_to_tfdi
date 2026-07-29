@@ -88,6 +88,8 @@ struct ProcedureTerminalReference {
     terminal_id: u64,
     #[serde(rename = "WptID")]
     waypoint_id: Option<u64>,
+    #[serde(rename = "NavID")]
+    navaid_id: Option<u64>,
 }
 
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
@@ -341,6 +343,16 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                     entry.path().display(),
                     leg.id,
                     waypoint_id
+                );
+            }
+            if let Some(navaid_id) = leg.navaid_id
+                && !navaid_ids.contains(&navaid_id)
+            {
+                bail!(
+                    "{} procedure leg ID {} references missing NavID {}",
+                    entry.path().display(),
+                    leg.id,
+                    navaid_id
                 );
             }
         }

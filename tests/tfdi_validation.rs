@@ -285,3 +285,26 @@ fn validator_rejects_procedure_leg_without_matching_waypoint() {
     assert!(error.to_string().contains("WptID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_procedure_leg_without_matching_navaid() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Navaids.json"), r#"[{"ID":40}]"#).unwrap();
+    fs::write(
+        root.join("Terminals.json"),
+        r#"[{"ID":3,"AirportID":1,"RwyID":null}]"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("ProcedureLegs").join("TermID_3.json"),
+        r#"[{"ID":10,"TerminalID":3,"NavID":99}]"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan NavID must fail validation");
+
+    assert!(error.to_string().contains("TermID_3.json"));
+    assert!(error.to_string().contains("NavID 99"));
+    fs::remove_dir_all(root).unwrap();
+}
