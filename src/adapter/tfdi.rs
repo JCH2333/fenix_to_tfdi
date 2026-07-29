@@ -48,6 +48,8 @@ struct TerminalAirportReference {
     id: u64,
     #[serde(rename = "AirportID")]
     airport_id: u64,
+    #[serde(rename = "RwyID")]
+    runway_id: Option<u64>,
 }
 
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
@@ -78,6 +80,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
 
     let mut airport_ids = HashSet::new();
+    let mut runway_ids = HashSet::new();
     let mut terminal_ids = HashSet::new();
     for file_name in [
         "Airports.json",
@@ -92,6 +95,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         let ids = load_unique_ids(&candidate_dir.join(file_name))?;
         match file_name {
             "Airports.json" => airport_ids = ids,
+            "Runways.json" => runway_ids = ids,
             "Terminals.json" => terminal_ids = ids,
             _ => {}
         }
@@ -132,6 +136,16 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 terminals_path.display(),
                 terminal.id,
                 terminal.airport_id
+            );
+        }
+        if let Some(runway_id) = terminal.runway_id
+            && !runway_ids.contains(&runway_id)
+        {
+            bail!(
+                "{} terminal ID {} references missing RwyID {}",
+                terminals_path.display(),
+                terminal.id,
+                runway_id
             );
         }
     }
