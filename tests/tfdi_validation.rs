@@ -94,3 +94,16 @@ fn validator_rejects_duplicate_ids_in_primary_tables() {
         fs::remove_dir_all(root).unwrap();
     }
 }
+
+#[test]
+fn validator_rejects_runway_without_matching_airport() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Runways.json"), r#"[{"ID":2,"AirportID":99}]"#).unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan runway must fail validation");
+
+    assert!(error.to_string().contains("Runways.json"));
+    assert!(error.to_string().contains("AirportID 99"));
+    fs::remove_dir_all(root).unwrap();
+}

@@ -34,6 +34,14 @@ struct IdRow {
     id: u64,
 }
 
+#[derive(Deserialize)]
+struct RunwayAirportReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "AirportID")]
+    airport_id: u64,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -61,6 +69,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         .with_context(|| format!("failed to parse required TFDI file: {}", path.display()))?;
     }
 
+    let mut airport_ids = HashSet::new();
     let mut terminal_ids = HashSet::new();
     for file_name in [
         "Airports.json",
@@ -73,8 +82,27 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         "ILSes.json",
     ] {
         let ids = load_unique_ids(&candidate_dir.join(file_name))?;
-        if file_name == "Terminals.json" {
-            terminal_ids = ids;
+        match file_name {
+            "Airports.json" => airport_ids = ids,
+            "Terminals.json" => terminal_ids = ids,
+            _ => {}
+        }
+    }
+
+    let runways_path = candidate_dir.join("Runways.json");
+    let runways: Vec<RunwayAirportReference> = serde_json::from_reader(
+        fs::File::open(&runways_path)
+            .with_context(|| format!("failed to open {}", runways_path.display()))?,
+    )
+    .with_context(|| format!("failed to parse references from {}", runways_path.display()))?;
+    for runway in runways {
+        if !airport_ids.contains(&runway.airport_id) {
+            bail!(
+                "{} runway ID {} references missing AirportID {}",
+                runways_path.display(),
+                runway.id,
+                runway.airport_id
+            );
         }
     }
 
