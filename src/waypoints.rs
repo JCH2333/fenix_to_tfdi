@@ -431,6 +431,9 @@ fn build_filtered_terminal_rows(
     let mut appended_rows = db_rows
         .into_iter()
         .filter_map(|mut row| {
+            if is_excluded_terminal_row(&row) {
+                return None;
+            }
             let keep_row = json_to_i64(row.get("ID")).is_none_or(|id| !existing_ids.contains(&id));
             if !keep_row {
                 return None;
@@ -790,7 +793,7 @@ mod tests {
             .filter_map(|row| json_to_i64(row.get("ID")))
             .collect::<Vec<_>>();
 
-        assert_eq!(ids, vec![6, 10, 11, 12]);
+        assert_eq!(ids, vec![6, 11]);
     }
 
     fn ils_row(id: i64, runway_id: i64, ident: &str, loc_course: f64) -> Map<String, Value> {
