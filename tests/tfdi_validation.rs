@@ -240,3 +240,25 @@ fn validator_rejects_malformed_procedure_file() {
     assert!(error.to_string().contains("TermID_3.json"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_procedure_leg_with_wrong_terminal_id() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(
+        root.join("Terminals.json"),
+        r#"[{"ID":3,"AirportID":1,"RwyID":null}]"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("ProcedureLegs").join("TermID_3.json"),
+        r#"[{"ID":10,"TerminalID":4}]"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("wrong TerminalID must fail validation");
+
+    assert!(error.to_string().contains("TermID_3.json"));
+    assert!(error.to_string().contains("TerminalID 4"));
+    fs::remove_dir_all(root).unwrap();
+}

@@ -80,6 +80,14 @@ struct AirwayLegReference {
     waypoint2_id: u64,
 }
 
+#[derive(Deserialize)]
+struct ProcedureTerminalReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "TerminalID")]
+    terminal_id: u64,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -308,11 +316,22 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 entry.path().display()
             );
         }
-        serde_json::from_reader::<_, serde_json::Value>(
+        let legs: Vec<ProcedureTerminalReference> = serde_json::from_reader(
             fs::File::open(entry.path())
                 .with_context(|| format!("failed to open {}", entry.path().display()))?,
         )
         .with_context(|| format!("failed to parse {}", entry.path().display()))?;
+        for leg in legs {
+            if leg.terminal_id != id {
+                bail!(
+                    "{} procedure leg ID {} has TerminalID {}, expected {}",
+                    entry.path().display(),
+                    leg.id,
+                    leg.terminal_id,
+                    id
+                );
+            }
+        }
         procedure_file_ids.insert(id);
     }
     if let Some(id) = terminal_ids.difference(&procedure_file_ids).min() {
