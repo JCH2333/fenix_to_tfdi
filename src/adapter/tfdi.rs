@@ -52,6 +52,14 @@ struct TerminalAirportReference {
     runway_id: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct IlsRunwayReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "RunwayID")]
+    runway_id: u64,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -146,6 +154,23 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 terminals_path.display(),
                 terminal.id,
                 runway_id
+            );
+        }
+    }
+
+    let ils_path = candidate_dir.join("ILSes.json");
+    let ils_rows: Vec<IlsRunwayReference> = serde_json::from_reader(
+        fs::File::open(&ils_path)
+            .with_context(|| format!("failed to open {}", ils_path.display()))?,
+    )
+    .with_context(|| format!("failed to parse references from {}", ils_path.display()))?;
+    for ils in ils_rows {
+        if !runway_ids.contains(&ils.runway_id) {
+            bail!(
+                "{} ILS ID {} references missing RunwayID {}",
+                ils_path.display(),
+                ils.id,
+                ils.runway_id
             );
         }
     }

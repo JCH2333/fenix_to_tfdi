@@ -137,3 +137,17 @@ fn validator_rejects_terminal_without_matching_runway() {
     assert!(error.to_string().contains("RwyID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_ils_without_matching_runway() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Runways.json"), r#"[{"ID":2,"AirportID":1}]"#).unwrap();
+    fs::write(root.join("ILSes.json"), r#"[{"ID":4,"RunwayID":99}]"#).unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan ILS must fail validation");
+
+    assert!(error.to_string().contains("ILSes.json"));
+    assert!(error.to_string().contains("RunwayID 99"));
+    fs::remove_dir_all(root).unwrap();
+}
