@@ -1,0 +1,44 @@
+use std::fs;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use fenix_to_tfdi::adapter::tfdi::validate_candidate;
+
+#[test]
+fn validator_rejects_procedure_file_without_matching_terminal() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("tfdi_validation_{unique}"));
+    fs::create_dir_all(root.join("ProcedureLegs")).unwrap();
+    for file in [
+        "Airports.json",
+        "Runways.json",
+        "Terminals.json",
+        "Navaids.json",
+        "NavaidLookup.json",
+        "Waypoints.json",
+        "WaypointLookup.json",
+        "Airways.json",
+        "AirwayLegs.json",
+        "ILSes.json",
+    ] {
+        fs::write(root.join(file), "[]").unwrap();
+    }
+    fs::write(
+        root.join("Config.json"),
+        r#"[{"key":"CycleEndDate","val":"05AUG26"},{"key":"CycleName","val":"2607"},{"key":"CycleStartDate","val":"09JUL26"}]"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("cycle.json"),
+        r#"{"cycle":"2607","revision":"2","name":"TFDi Design MD-11"}"#,
+    )
+    .unwrap();
+    fs::write(root.join("ProcedureLegs").join("TermID_99.json"), "[]").unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan procedure must fail validation");
+
+    assert!(error.to_string().contains("has no matching terminal"));
+    fs::remove_dir_all(root).unwrap();
+}

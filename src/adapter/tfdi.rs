@@ -1,9 +1,11 @@
 use anyhow::Result;
+use serde::Deserialize;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 
 use crate::model::CycleMetadata;
 
@@ -24,6 +26,59 @@ struct CycleFile<'a> {
     cycle: &'a str,
     revision: &'a str,
     name: &'static str,
+}
+
+#[derive(Deserialize)]
+struct TerminalId {
+    #[serde(rename = "ID")]
+    id: u64,
+}
+
+pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
+    let terminals_path = candidate_dir.join("Terminals.json");
+    let terminals: Vec<TerminalId> = serde_json::from_reader(
+        fs::File::open(&terminals_path)
+            .with_context(|| format!("failed to open {}", terminals_path.display()))?,
+    )
+    .with_context(|| format!("failed to parse {}", terminals_path.display()))?;
+    let terminal_ids: HashSet<u64> = terminals.into_iter().map(|terminal| terminal.id).collect();
+
+    let procedure_dir = candidate_dir.join("ProcedureLegs");
+    for entry in fs::read_dir(&procedure_dir)
+        .with_context(|| format!("failed to read {}", procedure_dir.display()))?
+    {
+        let entry = entry.with_context(|| {
+            format!(
+                "failed to read directory entry under {}",
+                procedure_dir.display()
+            )
+        })?;
+        if !entry
+            .file_type()
+            .with_context(|| format!("failed to inspect {}", entry.path().display()))?
+            .is_file()
+        {
+            continue;
+        }
+
+        let file_name = entry.file_name();
+        let file_name = file_name.to_string_lossy();
+        let Some(id) = file_name
+            .strip_prefix("TermID_")
+            .and_then(|name| name.strip_suffix(".json"))
+            .and_then(|id| id.parse::<u64>().ok())
+        else {
+            continue;
+        };
+        if !terminal_ids.contains(&id) {
+            bail!(
+                "procedure file {} has no matching terminal",
+                entry.path().display()
+            );
+        }
+    }
+
+    Ok(())
 }
 
 pub fn render_cycle_files(cycle: &CycleMetadata) -> Result<TfdiCycleFiles> {
