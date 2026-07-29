@@ -51,6 +51,10 @@ pub(crate) struct OutputLocation {
 
 pub(crate) fn parse_args() -> Result<AppConfig> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        print_help();
+        std::process::exit(0);
+    }
     if !args.is_empty() {
         bail!("unsupported arguments: {}", args.join(" "));
     }
@@ -66,6 +70,14 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
         start_terminal_id: None,
         rte_seg_path: None,
     })
+}
+
+fn print_help() {
+    println!(
+        "Fenix to TFDI navigation data converter\n\n\
+Usage:\n  fenix_to_tfdi [OPTIONS]\n\n\
+Options:\n  --db <PATH>         Fenix nd.db3 input\n  --rte-seg <PATH>    NAIP RTE_SEG.csv input\n  --reference <DIR>   Official TFDI Nav-Primary template\n  --output <DIR>      Isolated candidate output directory\n  -h, --help          Print help"
+    );
 }
 
 pub(crate) fn prepare_output_directory(output_dir: &Path) -> Result<()> {
