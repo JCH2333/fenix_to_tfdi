@@ -76,5 +76,15 @@ def validate_conversion_paths(
         raise ValueError(f"输出目录已存在，请选择新的目录：\n{output}")
 
 
+def find_converter_executable(app_dir: Path | str) -> Path | None:
+    """查找随 GUI 分发或由 Cargo 构建的转换程序。"""
+    root = Path(app_dir)
+    candidates = (
+        root / "fenix_to_tfdi.exe",
+        root / "target" / "release" / "fenix_to_tfdi.exe",
+    )
+    return _first_file(candidates)
+
+
 def _first_file(candidates: tuple[Path, ...]) -> Path | None:
     return next((path for path in candidates if path.is_file()), None)

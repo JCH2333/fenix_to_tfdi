@@ -4,7 +4,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from gui_logic import build_conversion_command, detect_paths, validate_conversion_paths
+from gui_logic import (
+    build_conversion_command,
+    detect_paths,
+    find_converter_executable,
+    validate_conversion_paths,
+)
 
 
 class PathDetectionTests(unittest.TestCase):
@@ -82,6 +87,19 @@ class ConversionCommandTests(unittest.TestCase):
                 validate_conversion_paths(
                     database, route_segments, reference, output
                 )
+
+    def test_prefers_converter_next_to_gui(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            app_dir = Path(temp_dir)
+            bundled = app_dir / "fenix_to_tfdi.exe"
+            cargo_release = app_dir / "target" / "release" / "fenix_to_tfdi.exe"
+            cargo_release.parent.mkdir(parents=True)
+            bundled.touch()
+            cargo_release.touch()
+
+            executable = find_converter_executable(app_dir)
+
+        self.assertEqual(executable, bundled)
 
 
 if __name__ == "__main__":
