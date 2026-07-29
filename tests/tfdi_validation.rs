@@ -107,3 +107,16 @@ fn validator_rejects_runway_without_matching_airport() {
     assert!(error.to_string().contains("AirportID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_terminal_without_matching_airport() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Terminals.json"), r#"[{"ID":3,"AirportID":99}]"#).unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan terminal must fail validation");
+
+    assert!(error.to_string().contains("Terminals.json"));
+    assert!(error.to_string().contains("AirportID 99"));
+    fs::remove_dir_all(root).unwrap();
+}

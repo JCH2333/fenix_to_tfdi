@@ -42,6 +42,14 @@ struct RunwayAirportReference {
     airport_id: u64,
 }
 
+#[derive(Deserialize)]
+struct TerminalAirportReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "AirportID")]
+    airport_id: u64,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -102,6 +110,28 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 runways_path.display(),
                 runway.id,
                 runway.airport_id
+            );
+        }
+    }
+
+    let terminals_path = candidate_dir.join("Terminals.json");
+    let terminals: Vec<TerminalAirportReference> = serde_json::from_reader(
+        fs::File::open(&terminals_path)
+            .with_context(|| format!("failed to open {}", terminals_path.display()))?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to parse references from {}",
+            terminals_path.display()
+        )
+    })?;
+    for terminal in terminals {
+        if !airport_ids.contains(&terminal.airport_id) {
+            bail!(
+                "{} terminal ID {} references missing AirportID {}",
+                terminals_path.display(),
+                terminal.id,
+                terminal.airport_id
             );
         }
     }
