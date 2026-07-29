@@ -47,6 +47,7 @@
 ## 二、系统要求
 
 - Windows 10/11
+- Python 3.10 或更高版本（运行 GUI）
 - Rust stable（仅从源码构建时需要）
 - 已安装 TFDI MD-11
 - 含 NAIP 中国数据的 Fenix `nd.db3`
@@ -54,7 +55,29 @@
 - 一份已知可正常使用的 TFDI 官方 `Nav-Primary` 模板
 
 
-## 三、构建
+## 三、GUI 快速开始（推荐）
+
+1. 先按下一节构建 `fenix_to_tfdi.exe`，或者将已经构建好的
+   `fenix_to_tfdi.exe` 放在 `gui.py` 同一目录。
+2. 双击 `run_gui.bat` 启动图形界面。
+3. 点击“自动检测路径”，检查以下四项：
+   - Fenix `nd.db3`
+   - `RTE_SEG.csv`
+   - TFDI 官方 `Nav-Primary` 模板
+   - 新的候选输出目录
+4. 点击“开始转换”，阅读测试版提示并确认。
+5. 等待转换器完成生成和内置验证；成功后点击“打开输出目录”。
+
+GUI 会优先查找同目录的 `fenix_to_tfdi.exe`，其次查找
+`target/release/fenix_to_tfdi.exe`。路径自动检测会检查项目附近的输入数据，
+并检查 MSFS 2024 WASM 中通常使用的 TFDI 目录。
+
+GUI 只调用现有 Rust 转换核心，不会自行改写数据规则。它只允许输出到尚不存在的
+新目录，不提供直接覆盖 WASM 的按钮。界面显示“转换及验证完成”只表示通过本地
+验证，**不表示已经通过 TFDI MD-11 实机验证**。
+
+
+## 四、构建
 
 Windows 上建议使用 GNU 工具链：
 
@@ -67,7 +90,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 项目所在路径含中文时，建议将 `CARGO_TARGET_DIR` 设置为纯英文临时目录。
 
 
-## 四、转换方法
+## 五、命令行转换（高级）
 
 ```powershell
 .\target\release\fenix_to_tfdi.exe `
@@ -91,7 +114,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 程序不会自动探测或覆盖活动的游戏目录。
 
 
-## 五、自动验证
+## 六、自动验证
 
 转换完成后会自动执行 TFDI 专用验证，任一检查失败都会返回非零退出状态：
 
@@ -105,7 +128,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 本地验证只能证明输出符合已知的 TFDI 文件契约，不能代替实机验证。
 
 
-## 六、测试安装到 MSFS 2024
+## 七、测试安装到 MSFS 2024
 
 TFDI 活动数据通常位于：
 
@@ -127,7 +150,7 @@ TFDI 活动数据通常位于：
 当前工具故意不提供“直接覆盖”参数，避免在模拟器运行时破坏 WASM 数据。
 
 
-## 七、恢复官方数据
+## 八、恢复官方数据
 
 1. 完全退出 MSFS 2024。
 2. 将当前测试用 `Nav-Primary` 移出 WASM 目录。
@@ -136,7 +159,7 @@ TFDI 活动数据通常位于：
 5. 再启动 MSFS 2024。
 
 
-## 八、建议的实机测试
+## 九、建议的实机测试
 
 1. 在 FMS 中输入 `ZBCF`、`ZUNZ`、`ZUUU`，确认机场可检索且不重复。
 2. 分别设置为出发和到达机场。
@@ -146,7 +169,7 @@ TFDI 活动数据通常位于：
 6. 最后退出游戏，确认没有延迟崩溃。
 
 
-## 九、文件说明
+## 十、文件说明
 
 ```text
 src/source/fenix.rs       Fenix 数据源元数据解析
@@ -155,11 +178,15 @@ src/adapter/tfdi.rs       TFDI 周期适配、安全写入和专用验证
 src/terminal_legs.rs      TFDI ProcedureLegs 生成与引用重映射
 src/airways/              RTE_SEG 解析与航路合并
 tests/                    契约、CLI 和回归测试
+gui.py                    面向用户的 Tkinter 图形界面
+gui_logic.py              GUI 路径检测、校验与命令构造
+python_tests/             GUI 公共逻辑测试
+run_gui.bat               Windows 双击启动脚本
 docs/tfdi-contract.md     已检查的 TFDI 运行时契约
 ```
 
 
-## 十、注意事项
+## 十一、注意事项
 
 1. 当前候选只能标记为“测试版 / 未经实机验证”。
 2. 不要在 MSFS 2024 运行时覆盖 WASM 文件。
@@ -170,7 +197,7 @@ docs/tfdi-contract.md     已检查的 TFDI 运行时契约
 7. 输入数据库、官方模板、生成候选、备份、日志和外部测试包均不提交到 GitHub。
 
 
-## 十一、参考项目
+## 十二、参考项目
 
 - [Yuzuriha03/Fenix2TFDINavDataConverter](https://github.com/Yuzuriha03/Fenix2TFDINavDataConverter)
 - [JCH2333/fenix_to_ini](https://github.com/JCH2333/fenix_to_ini)
