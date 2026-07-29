@@ -53,6 +53,12 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         if !path.is_file() {
             bail!("required TFDI file is missing: {}", path.display());
         }
+        serde_json::from_reader::<_, serde_json::Value>(
+            fs::File::open(&path).with_context(|| {
+                format!("failed to open required TFDI file: {}", path.display())
+            })?,
+        )
+        .with_context(|| format!("failed to parse required TFDI file: {}", path.display()))?;
     }
 
     let terminals_path = candidate_dir.join("Terminals.json");

@@ -60,3 +60,14 @@ fn validator_rejects_missing_required_main_json() {
     assert!(error.to_string().contains("Airports.json"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_malformed_required_main_json() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), "not JSON").unwrap();
+
+    let error = validate_candidate(&root).expect_err("malformed main JSON must fail validation");
+
+    assert!(error.to_string().contains("Airports.json"));
+    fs::remove_dir_all(root).unwrap();
+}
