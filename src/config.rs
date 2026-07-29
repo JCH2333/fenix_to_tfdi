@@ -6,6 +6,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use fenix_to_tfdi::cli::parse_conversion_args;
 use rusqlite::Connection;
 
 const REQUIRED_TABLES: &[&str] = &[
@@ -56,7 +57,17 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
         std::process::exit(0);
     }
     if !args.is_empty() {
-        bail!("unsupported arguments: {}", args.join(" "));
+        let request = parse_conversion_args(args)?;
+        return Ok(AppConfig {
+            output_targets: vec![OutputLocation {
+                label: "candidate output".to_string(),
+                path: request.output_dir,
+            }],
+            reference_dir: Some(request.reference_dir),
+            db_path: Some(request.db_path),
+            start_terminal_id: None,
+            rte_seg_path: Some(request.rte_seg_path),
+        });
     }
 
     let candidates = detect_output_directories();
