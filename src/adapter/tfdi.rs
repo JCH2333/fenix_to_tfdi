@@ -94,6 +94,17 @@ struct ProcedureTerminalReference {
     center_id: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct ValidationConfigEntry {
+    key: String,
+    val: String,
+}
+
+#[derive(Deserialize)]
+struct ValidationCycleFile {
+    cycle: String,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -120,6 +131,8 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
         )
         .with_context(|| format!("failed to parse required TFDI file: {}", path.display()))?;
     }
+
+    validate_cycle_metadata(candidate_dir)?;
 
     let mut airport_ids = HashSet::new();
     let mut runway_ids = HashSet::new();
@@ -409,6 +422,47 @@ fn validate_lookup_ids(path: &Path, primary_ids: &HashSet<u64>, primary_file: &s
                 primary_file
             );
         }
+    }
+    Ok(())
+}
+
+fn validate_cycle_metadata(candidate_dir: &Path) -> Result<()> {
+    let config_path = candidate_dir.join("Config.json");
+    let config: Vec<ValidationConfigEntry> = serde_json::from_reader(
+        fs::File::open(&config_path)
+            .with_context(|| format!("failed to open {}", config_path.display()))?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to parse cycle metadata from {}",
+            config_path.display()
+        )
+    })?;
+    let config_cycle = config
+        .iter()
+        .find(|entry| entry.key == "CycleName")
+        .map(|entry| entry.val.as_str())
+        .with_context(|| format!("{} has no CycleName entry", config_path.display()))?;
+
+    let cycle_path = candidate_dir.join("cycle.json");
+    let cycle: ValidationCycleFile = serde_json::from_reader(
+        fs::File::open(&cycle_path)
+            .with_context(|| format!("failed to open {}", cycle_path.display()))?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to parse cycle metadata from {}",
+            cycle_path.display()
+        )
+    })?;
+    if config_cycle != cycle.cycle {
+        bail!(
+            "{} CycleName {} does not match {} cycle {}",
+            config_path.display(),
+            config_cycle,
+            cycle_path.display(),
+            cycle.cycle
+        );
     }
     Ok(())
 }

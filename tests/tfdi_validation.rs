@@ -331,3 +331,21 @@ fn validator_rejects_procedure_leg_without_matching_center_waypoint() {
     assert!(error.to_string().contains("CenterID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_inconsistent_cycle_metadata() {
+    let root = candidate_fixture();
+    fs::write(
+        root.join("cycle.json"),
+        r#"{"cycle":"2606","revision":"2","name":"TFDi Design MD-11"}"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("cycle mismatch must fail validation");
+
+    assert!(error.to_string().contains("Config.json"));
+    assert!(error.to_string().contains("cycle.json"));
+    assert!(error.to_string().contains("2607"));
+    assert!(error.to_string().contains("2606"));
+    fs::remove_dir_all(root).unwrap();
+}
