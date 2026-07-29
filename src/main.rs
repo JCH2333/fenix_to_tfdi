@@ -14,7 +14,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
+use fenix_to_tfdi::adapter::tfdi::write_cycle_files;
 use fenix_to_tfdi::candidate::copy_template_to_candidate;
+use fenix_to_tfdi::source::fenix::load_cycle_metadata;
 use rayon::prelude::*;
 use rusqlite::Connection;
 
@@ -215,9 +217,21 @@ fn run() -> Result<()> {
             airway_reference_json_prewarm_handle,
         )?
     };
+    sync_candidate_cycle_metadata(&config)?;
 
     print_output_reports(&output_results, total_start.elapsed());
 
+    Ok(())
+}
+
+fn sync_candidate_cycle_metadata(config: &config::AppConfig) -> Result<()> {
+    let Some(db_path) = config.db_path.as_deref() else {
+        return Ok(());
+    };
+    let cycle = load_cycle_metadata(db_path)?;
+    for output in &config.output_targets {
+        write_cycle_files(&output.path, &cycle)?;
+    }
     Ok(())
 }
 
