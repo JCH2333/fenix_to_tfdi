@@ -24,3 +24,20 @@ fn explicit_paths_form_one_isolated_conversion_request() {
     assert_eq!(request.reference_dir, PathBuf::from("official/Nav-Primary"));
     assert_eq!(request.output_dir, PathBuf::from("output/Nav-Primary"));
 }
+
+#[test]
+fn active_reference_directory_cannot_be_used_as_candidate_output() {
+    let error = parse_conversion_args([
+        "--db",
+        "inputs/nd.db3",
+        "--rte-seg",
+        "inputs/2607/RTE_SEG.csv",
+        "--reference",
+        "official/Nav-Primary",
+        "--output",
+        "official/Nav-Primary",
+    ])
+    .expect_err("in-place conversion must be rejected");
+
+    assert!(error.to_string().contains("must be different"));
+}

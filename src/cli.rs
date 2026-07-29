@@ -39,11 +39,16 @@ where
         }
     }
 
+    let reference_dir = reference_dir.context("missing required option --reference")?;
+    let output_dir = output_dir.context("missing required option --output")?;
+    if reference_dir == output_dir {
+        bail!("--reference and --output must be different directories");
+    }
+
     Ok(ConversionRequest {
         db_path: db_path.context("missing required option --db")?,
         rte_seg_path: rte_seg_path.context("missing required option --rte-seg")?,
-        reference_dir: reference_dir.context("missing required option --reference")?,
-        output_dir: output_dir.context("missing required option --output")?,
+        reference_dir,
+        output_dir,
     })
 }
-
