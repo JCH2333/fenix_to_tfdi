@@ -308,3 +308,26 @@ fn validator_rejects_procedure_leg_without_matching_navaid() {
     assert!(error.to_string().contains("NavID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_procedure_leg_without_matching_center_waypoint() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Waypoints.json"), r#"[{"ID":20}]"#).unwrap();
+    fs::write(
+        root.join("Terminals.json"),
+        r#"[{"ID":3,"AirportID":1,"RwyID":null}]"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("ProcedureLegs").join("TermID_3.json"),
+        r#"[{"ID":10,"TerminalID":3,"CenterID":99}]"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan CenterID must fail validation");
+
+    assert!(error.to_string().contains("TermID_3.json"));
+    assert!(error.to_string().contains("CenterID 99"));
+    fs::remove_dir_all(root).unwrap();
+}

@@ -90,6 +90,8 @@ struct ProcedureTerminalReference {
     waypoint_id: Option<u64>,
     #[serde(rename = "NavID")]
     navaid_id: Option<u64>,
+    #[serde(rename = "CenterID")]
+    center_id: Option<u64>,
 }
 
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
@@ -353,6 +355,16 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                     entry.path().display(),
                     leg.id,
                     navaid_id
+                );
+            }
+            if let Some(center_id) = leg.center_id
+                && !waypoint_ids.contains(&center_id)
+            {
+                bail!(
+                    "{} procedure leg ID {} references missing CenterID {}",
+                    entry.path().display(),
+                    leg.id,
+                    center_id
                 );
             }
         }
