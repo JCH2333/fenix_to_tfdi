@@ -101,6 +101,18 @@ class ConversionCommandTests(unittest.TestCase):
 
         self.assertEqual(executable, bundled)
 
+    def test_rejects_missing_fenix_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+
+            with self.assertRaisesRegex(ValueError, "Fenix nd.db3 不存在"):
+                validate_conversion_paths(
+                    root / "missing.db3",
+                    root / "RTE_SEG.csv",
+                    root / "reference",
+                    root / "output",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
