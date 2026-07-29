@@ -68,6 +68,18 @@ struct WaypointNavaidReference {
     navaid_id: Option<u64>,
 }
 
+#[derive(Deserialize)]
+struct AirwayLegReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "AirwayID")]
+    airway_id: u64,
+    #[serde(rename = "Waypoint1ID")]
+    waypoint1_id: u64,
+    #[serde(rename = "Waypoint2ID")]
+    waypoint2_id: u64,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -99,6 +111,8 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     let mut runway_ids = HashSet::new();
     let mut terminal_ids = HashSet::new();
     let mut navaid_ids = HashSet::new();
+    let mut waypoint_ids = HashSet::new();
+    let mut airway_ids = HashSet::new();
     for file_name in [
         "Airports.json",
         "Runways.json",
@@ -115,6 +129,8 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
             "Runways.json" => runway_ids = ids,
             "Terminals.json" => terminal_ids = ids,
             "Navaids.json" => navaid_ids = ids,
+            "Waypoints.json" => waypoint_ids = ids,
+            "Airways.json" => airway_ids = ids,
             _ => {}
         }
     }
@@ -205,6 +221,44 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 waypoints_path.display(),
                 waypoint.id,
                 navaid_id
+            );
+        }
+    }
+
+    let airway_legs_path = candidate_dir.join("AirwayLegs.json");
+    let airway_legs: Vec<AirwayLegReference> = serde_json::from_reader(
+        fs::File::open(&airway_legs_path)
+            .with_context(|| format!("failed to open {}", airway_legs_path.display()))?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to parse references from {}",
+            airway_legs_path.display()
+        )
+    })?;
+    for leg in airway_legs {
+        if !airway_ids.contains(&leg.airway_id) {
+            bail!(
+                "{} airway leg ID {} references missing AirwayID {}",
+                airway_legs_path.display(),
+                leg.id,
+                leg.airway_id
+            );
+        }
+        if !waypoint_ids.contains(&leg.waypoint1_id) {
+            bail!(
+                "{} airway leg ID {} references missing Waypoint1ID {}",
+                airway_legs_path.display(),
+                leg.id,
+                leg.waypoint1_id
+            );
+        }
+        if !waypoint_ids.contains(&leg.waypoint2_id) {
+            bail!(
+                "{} airway leg ID {} references missing Waypoint2ID {}",
+                airway_legs_path.display(),
+                leg.id,
+                leg.waypoint2_id
             );
         }
     }

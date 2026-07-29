@@ -163,3 +163,29 @@ fn validator_rejects_waypoint_without_matching_navaid() {
     assert!(error.to_string().contains("NavaidID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_airway_leg_with_missing_references() {
+    for (field, airway_id, waypoint1_id, waypoint2_id) in [
+        ("AirwayID 99", 99, 20, 21),
+        ("Waypoint1ID 99", 10, 99, 21),
+        ("Waypoint2ID 99", 10, 20, 99),
+    ] {
+        let root = candidate_fixture();
+        fs::write(root.join("Airways.json"), r#"[{"ID":10}]"#).unwrap();
+        fs::write(root.join("Waypoints.json"), r#"[{"ID":20},{"ID":21}]"#).unwrap();
+        fs::write(
+            root.join("AirwayLegs.json"),
+            format!(
+                r#"[{{"ID":30,"AirwayID":{airway_id},"Waypoint1ID":{waypoint1_id},"Waypoint2ID":{waypoint2_id}}}]"#
+            ),
+        )
+        .unwrap();
+
+        let error = validate_candidate(&root).expect_err("orphan airway leg must fail validation");
+
+        assert!(error.to_string().contains("AirwayLegs.json"));
+        assert!(error.to_string().contains(field));
+        fs::remove_dir_all(root).unwrap();
+    }
+}
