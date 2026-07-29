@@ -1,9 +1,10 @@
 use anyhow::Result;
+use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 
@@ -302,7 +303,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
 
     let procedure_dir = candidate_dir.join("ProcedureLegs");
-    let mut procedure_file_ids = HashSet::new();
+    let mut procedure_files = Vec::new();
     for entry in fs::read_dir(&procedure_dir)
         .with_context(|| format!("failed to read {}", procedure_dir.display()))?
     {
@@ -335,54 +336,10 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 entry.path().display()
             );
         }
-        let legs: Vec<ProcedureTerminalReference> = serde_json::from_reader(
-            fs::File::open(entry.path())
-                .with_context(|| format!("failed to open {}", entry.path().display()))?,
-        )
-        .with_context(|| format!("failed to parse {}", entry.path().display()))?;
-        for leg in legs {
-            if leg.terminal_id != id {
-                bail!(
-                    "{} procedure leg ID {} has TerminalID {}, expected {}",
-                    entry.path().display(),
-                    leg.id,
-                    leg.terminal_id,
-                    id
-                );
-            }
-            if let Some(waypoint_id) = leg.waypoint_id
-                && !waypoint_ids.contains(&waypoint_id)
-            {
-                bail!(
-                    "{} procedure leg ID {} references missing WptID {}",
-                    entry.path().display(),
-                    leg.id,
-                    waypoint_id
-                );
-            }
-            if let Some(navaid_id) = leg.navaid_id
-                && !navaid_ids.contains(&navaid_id)
-            {
-                bail!(
-                    "{} procedure leg ID {} references missing NavID {}",
-                    entry.path().display(),
-                    leg.id,
-                    navaid_id
-                );
-            }
-            if let Some(center_id) = leg.center_id
-                && !waypoint_ids.contains(&center_id)
-            {
-                bail!(
-                    "{} procedure leg ID {} references missing CenterID {}",
-                    entry.path().display(),
-                    leg.id,
-                    center_id
-                );
-            }
-        }
-        procedure_file_ids.insert(id);
+        procedure_files.push((id, entry.path()));
     }
+    procedure_files.sort_unstable_by_key(|(id, _)| *id);
+    let procedure_file_ids: HashSet<u64> = procedure_files.iter().map(|(id, _)| *id).collect();
     if let Some(id) = terminal_ids.difference(&procedure_file_ids).min() {
         bail!(
             "terminal ID {} has no procedure file: {}",
@@ -390,7 +347,68 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
             procedure_dir.join(format!("TermID_{id}.json")).display()
         );
     }
+    let validation_results: Vec<Result<()>> = procedure_files
+        .par_iter()
+        .map(|(id, path)| validate_procedure_file(path, *id, &waypoint_ids, &navaid_ids))
+        .collect();
+    for result in validation_results {
+        result?;
+    }
 
+    Ok(())
+}
+
+fn validate_procedure_file(
+    path: &PathBuf,
+    terminal_id: u64,
+    waypoint_ids: &HashSet<u64>,
+    navaid_ids: &HashSet<u64>,
+) -> Result<()> {
+    let legs: Vec<ProcedureTerminalReference> = serde_json::from_reader(
+        fs::File::open(path).with_context(|| format!("failed to open {}", path.display()))?,
+    )
+    .with_context(|| format!("failed to parse {}", path.display()))?;
+    for leg in legs {
+        if leg.terminal_id != terminal_id {
+            bail!(
+                "{} procedure leg ID {} has TerminalID {}, expected {}",
+                path.display(),
+                leg.id,
+                leg.terminal_id,
+                terminal_id
+            );
+        }
+        if let Some(waypoint_id) = leg.waypoint_id
+            && !waypoint_ids.contains(&waypoint_id)
+        {
+            bail!(
+                "{} procedure leg ID {} references missing WptID {}",
+                path.display(),
+                leg.id,
+                waypoint_id
+            );
+        }
+        if let Some(navaid_id) = leg.navaid_id
+            && !navaid_ids.contains(&navaid_id)
+        {
+            bail!(
+                "{} procedure leg ID {} references missing NavID {}",
+                path.display(),
+                leg.id,
+                navaid_id
+            );
+        }
+        if let Some(center_id) = leg.center_id
+            && !waypoint_ids.contains(&center_id)
+        {
+            bail!(
+                "{} procedure leg ID {} references missing CenterID {}",
+                path.display(),
+                leg.id,
+                center_id
+            );
+        }
+    }
     Ok(())
 }
 
