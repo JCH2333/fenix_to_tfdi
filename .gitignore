@@ -1,0 +1,9 @@
+/target/
+/output/
+/test-output/
+*.tmp
+*.bak
+*.db3
+*.csv
+*.zip
+

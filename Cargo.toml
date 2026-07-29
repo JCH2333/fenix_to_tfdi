@@ -1,0 +1,25 @@
+[package]
+name = "fenix_to_tfdi"
+version = "0.2.0"
+edition = "2024"
+description = "Convert Fenix nav data into the TFDI MD-11 navigation data format."
+license = "GPL-3.0-only"
+repository = "https://github.com/JCH2333/fenix_to_tfdi"
+keywords = ["fenix", "tfdi", "navdata", "aviation", "converter"]
+categories = ["command-line-utilities"]
+
+[build-dependencies]
+winresource = "0.1.31"
+
+[dependencies]
+anyhow = "1.0"
+encoding_rs = "0.8"
+rayon = "1.10"
+rusqlite = { version = "0.39", features = ["bundled"] }
+rustc-hash = "2.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
