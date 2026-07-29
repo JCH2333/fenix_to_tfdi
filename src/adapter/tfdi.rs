@@ -308,6 +308,11 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 entry.path().display()
             );
         }
+        serde_json::from_reader::<_, serde_json::Value>(
+            fs::File::open(entry.path())
+                .with_context(|| format!("failed to open {}", entry.path().display()))?,
+        )
+        .with_context(|| format!("failed to parse {}", entry.path().display()))?;
         procedure_file_ids.insert(id);
     }
     if let Some(id) = terminal_ids.difference(&procedure_file_ids).min() {
