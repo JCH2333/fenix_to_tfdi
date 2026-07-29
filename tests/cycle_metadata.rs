@@ -1,5 +1,6 @@
 use fenix_to_tfdi::adapter::tfdi::render_cycle_files;
-use fenix_to_tfdi::source::fenix::parse_cycle_metadata;
+use fenix_to_tfdi::source::fenix::{load_cycle_metadata, parse_cycle_metadata};
+use rusqlite::Connection;
 
 #[test]
 fn fenix_cycle_revision_is_normalized_into_the_source_model() {
@@ -35,4 +36,30 @@ fn tfdi_cycle_files_share_the_normalized_cycle_and_revision() {
     assert_eq!(cycle_json["cycle"], "2607");
     assert_eq!(cycle_json["revision"], "2");
     assert_eq!(cycle_json["name"], "TFDi Design MD-11");
+}
+
+#[test]
+fn cycle_metadata_is_loaded_from_the_fenix_config_table() {
+    let db_path = std::env::temp_dir().join(format!(
+        "fenix_cycle_{}_{}.db3",
+        std::process::id(),
+        std::thread::current().name().unwrap_or("test")
+    ));
+    let connection = Connection::open(&db_path).unwrap();
+    connection
+        .execute("CREATE TABLE config (key TEXT, val TEXT)", [])
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO config VALUES ('CycleEndDate','05AUG26'),('CycleName','2607n2'),('CycleStartDate','09JUL26')",
+            [],
+        )
+        .unwrap();
+    drop(connection);
+
+    let cycle = load_cycle_metadata(&db_path).expect("load Fenix cycle metadata");
+
+    assert_eq!(cycle.cycle, "2607");
+    assert_eq!(cycle.revision, "2");
+    std::fs::remove_file(db_path).unwrap();
 }
