@@ -64,5 +64,17 @@ def build_conversion_command(
     ]
 
 
+def validate_conversion_paths(
+    database: Path | str,
+    route_segments: Path | str,
+    reference: Path | str,
+    output: Path | str,
+) -> None:
+    """验证 GUI 转换路径不会覆盖已有目录。"""
+    del database, route_segments, reference
+    if Path(output).exists():
+        raise ValueError(f"输出目录已存在，请选择新的目录：\n{output}")
+
+
 def _first_file(candidates: tuple[Path, ...]) -> Path | None:
     return next((path for path in candidates if path.is_file()), None)

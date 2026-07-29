@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from gui_logic import build_conversion_command, detect_paths
+from gui_logic import build_conversion_command, detect_paths, validate_conversion_paths
 
 
 class PathDetectionTests(unittest.TestCase):
@@ -65,6 +65,23 @@ class ConversionCommandTests(unittest.TestCase):
                 os.fspath(Path("output/2607-test")),
             ],
         )
+
+    def test_rejects_an_existing_output_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database = root / "nd.db3"
+            route_segments = root / "RTE_SEG.csv"
+            reference = root / "reference"
+            output = root / "existing-output"
+            database.touch()
+            route_segments.touch()
+            reference.mkdir()
+            output.mkdir()
+
+            with self.assertRaisesRegex(ValueError, "输出目录已存在"):
+                validate_conversion_paths(
+                    database, route_segments, reference, output
+                )
 
 
 if __name__ == "__main__":
