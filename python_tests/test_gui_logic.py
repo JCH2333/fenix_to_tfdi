@@ -113,6 +113,20 @@ class ConversionCommandTests(unittest.TestCase):
                     root / "output",
                 )
 
+    def test_rejects_missing_route_segments(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database = root / "nd.db3"
+            database.touch()
+
+            with self.assertRaisesRegex(ValueError, "RTE_SEG.csv 不存在"):
+                validate_conversion_paths(
+                    database,
+                    root / "missing.csv",
+                    root / "reference",
+                    root / "output",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
