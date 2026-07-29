@@ -14,7 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use fenix_to_tfdi::adapter::tfdi::write_cycle_files;
+use fenix_to_tfdi::adapter::tfdi::finalize_candidate;
 use fenix_to_tfdi::candidate::copy_template_to_candidate;
 use fenix_to_tfdi::source::fenix::load_cycle_metadata;
 use rayon::prelude::*;
@@ -230,7 +230,7 @@ fn sync_candidate_cycle_metadata(config: &config::AppConfig) -> Result<()> {
     };
     let cycle = load_cycle_metadata(db_path)?;
     for output in &config.output_targets {
-        write_cycle_files(&output.path, &cycle)?;
+        finalize_candidate(&output.path, &cycle)?;
     }
     Ok(())
 }

@@ -501,6 +501,11 @@ pub fn write_cycle_files(output_dir: &Path, cycle: &CycleMetadata) -> Result<()>
     Ok(())
 }
 
+pub fn finalize_candidate(output_dir: &Path, cycle: &CycleMetadata) -> Result<()> {
+    write_cycle_files(output_dir, cycle)?;
+    validate_candidate(output_dir)
+}
+
 fn replace_candidate_file(path: &Path, contents: &str) -> Result<()> {
     let temporary = path.with_extension("fenix-to-tfdi.tmp");
     let swap = path.with_extension("fenix-to-tfdi.swap");

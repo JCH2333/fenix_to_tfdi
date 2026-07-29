@@ -1,15 +1,25 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use fenix_to_tfdi::adapter::tfdi::validate_candidate;
+use fenix_to_tfdi::adapter::tfdi::{finalize_candidate, validate_candidate};
+use fenix_to_tfdi::model::CycleMetadata;
+
+static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 fn candidate_fixture() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("tfdi_validation_{unique}"));
+    let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let root = std::env::temp_dir().join(format!(
+        "tfdi_validation_{}_{}_{}",
+        std::process::id(),
+        unique,
+        sequence
+    ));
     fs::create_dir_all(root.join("ProcedureLegs")).unwrap();
     for file in [
         "Airports.json",
@@ -88,9 +98,10 @@ fn validator_rejects_duplicate_ids_in_primary_tables() {
         fs::write(root.join(file_name), r#"[{"ID":7},{"ID":7}]"#).unwrap();
 
         let error = validate_candidate(&root).expect_err("duplicate ID must fail validation");
+        let message = error.to_string();
 
-        assert!(error.to_string().contains(file_name));
-        assert!(error.to_string().contains("duplicate ID 7"));
+        assert!(message.contains(file_name), "{file_name}: {message}");
+        assert!(message.contains("duplicate ID 7"), "{file_name}: {message}");
         fs::remove_dir_all(root).unwrap();
     }
 }
@@ -347,5 +358,24 @@ fn validator_rejects_inconsistent_cycle_metadata() {
     assert!(error.to_string().contains("cycle.json"));
     assert!(error.to_string().contains("2607"));
     assert!(error.to_string().contains("2606"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn finalizing_candidate_runs_target_validation() {
+    let root = candidate_fixture();
+    fs::write(root.join("ProcedureLegs").join("TermID_99.json"), "[]").unwrap();
+    let cycle = CycleMetadata {
+        cycle: "2607".to_string(),
+        revision: "2".to_string(),
+        start_date: "09JUL26".to_string(),
+        end_date: "05AUG26".to_string(),
+    };
+
+    let error = finalize_candidate(&root, &cycle).expect_err("invalid candidate must not finalize");
+
+    assert!(error.to_string().contains("has no matching terminal"));
+    let cycle_json = fs::read_to_string(root.join("cycle.json")).unwrap();
+    assert!(cycle_json.contains(r#""revision":"2""#));
     fs::remove_dir_all(root).unwrap();
 }
