@@ -21,6 +21,17 @@ fn help_lists_explicit_conversion_paths() {
 }
 
 #[test]
+fn running_without_paths_cannot_auto_write_the_active_simulator_data() {
+    let output = Command::new(env!("CARGO_BIN_EXE_fenix_to_tfdi"))
+        .output()
+        .expect("run converter without arguments");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("explicit conversion paths are required"));
+}
+
+#[test]
 fn explicit_paths_reach_conversion_input_validation() {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)

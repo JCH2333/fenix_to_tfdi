@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::env;
-use std::ffi::OsString;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -56,30 +55,19 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
         print_help();
         std::process::exit(0);
     }
-    if !args.is_empty() {
-        let request = parse_conversion_args(args)?;
-        return Ok(AppConfig {
-            output_targets: vec![OutputLocation {
-                label: "candidate output".to_string(),
-                path: request.output_dir,
-            }],
-            reference_dir: Some(request.reference_dir),
-            db_path: Some(request.db_path),
-            start_terminal_id: None,
-            rte_seg_path: Some(request.rte_seg_path),
-        });
+    if args.is_empty() {
+        bail!("explicit conversion paths are required; run with --help for usage");
     }
-
-    let candidates = detect_output_directories();
-    let selected = select_output_locations(&candidates)?;
-    let reference_dir = selected.first().map(|location| location.path.clone());
-
+    let request = parse_conversion_args(args)?;
     Ok(AppConfig {
-        output_targets: selected,
-        reference_dir,
-        db_path: None,
+        output_targets: vec![OutputLocation {
+            label: "candidate output".to_string(),
+            path: request.output_dir,
+        }],
+        reference_dir: Some(request.reference_dir),
+        db_path: Some(request.db_path),
         start_terminal_id: None,
-        rte_seg_path: None,
+        rte_seg_path: Some(request.rte_seg_path),
     })
 }
 
@@ -205,126 +193,6 @@ pub(crate) fn validate_required_tables(conn: &Connection) -> Result<()> {
     } else {
         bail!("missing required tables: {}", missing.join(", "));
     }
-}
-
-fn detect_output_directories() -> Vec<OutputLocation> {
-    nav_primary_candidates()
-        .into_iter()
-        .filter(|location| location.path.exists())
-        .collect()
-}
-
-fn select_output_locations(candidates: &[OutputLocation]) -> Result<Vec<OutputLocation>> {
-    if candidates.is_empty() {
-        bail!("failed to detect any valid Nav-Primary directories");
-    }
-    if candidates.len() == 1 {
-        return Ok(vec![candidates[0].clone()]);
-    }
-
-    println!("Multiple Nav-Primary directories were found. Choose which to update:");
-    for (idx, location) in candidates.iter().enumerate() {
-        println!(
-            "  {}) {} ({})",
-            idx + 1,
-            location.label,
-            location.path.display()
-        );
-    }
-    println!("Enter numbers (e.g. 1 or 1,3) or 'all':");
-
-    loop {
-        let input = prompt("> ")?;
-        let input = input.trim();
-        if input.eq_ignore_ascii_case("all") {
-            return Ok(candidates.to_vec());
-        }
-
-        let mut selection = Vec::new();
-        let mut invalid = false;
-        for part in input.split(',') {
-            let part = part.trim();
-            if part.is_empty() {
-                continue;
-            }
-            match part.parse::<usize>() {
-                Ok(idx) if idx > 0 && idx <= candidates.len() => {
-                    selection.push(candidates[idx - 1].clone());
-                }
-                _ => {
-                    invalid = true;
-                    break;
-                }
-            }
-        }
-
-        if !invalid && !selection.is_empty() {
-            return Ok(selection);
-        }
-
-        println!("Invalid selection; enter numbers separated by commas or 'all'.");
-    }
-}
-
-fn nav_primary_candidates() -> Vec<OutputLocation> {
-    vec![
-        OutputLocation {
-            label: "MSFS2020 (Microsoft Store)".to_string(),
-            path: expand_env(
-                r"%LocalAppData%\Packages\Microsoft.FlightSimulator_8wekyb3d8bbwe\LocalState\packages\tfdidesign-aircraft-md11\work\Nav-Primary",
-            ),
-        },
-        OutputLocation {
-            label: "MSFS2020 (Steam)".to_string(),
-            path: expand_env(
-                r"%AppData%\Microsoft Flight Simulator\Packages\tfdidesign-aircraft-md11\work\Nav-Primary",
-            ),
-        },
-        OutputLocation {
-            label: "MSFS2024 (Microsoft Store)".to_string(),
-            path: expand_env(
-                r"%LocalAppData%\Packages\Microsoft.Limitless_8wekyb3d8bbwe\LocalState\WASM\MSFS2024\tfdidesign-aircraft-md11\work\Nav-Primary",
-            ),
-        },
-        OutputLocation {
-            label: "MSFS2024 (Steam)".to_string(),
-            path: expand_env(
-                r"%AppData%\Microsoft Flight Simulator 2024\WASM\MSFS2024\tfdidesign-aircraft-md11\work\Nav-Primary",
-            ),
-        },
-    ]
-}
-
-fn expand_env(path: &str) -> PathBuf {
-    let mut expanded = OsString::new();
-    let mut chars = path.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch != '%' {
-            expanded.push(ch.to_string());
-            continue;
-        }
-
-        let mut variable = String::new();
-        while let Some(next) = chars.peek().copied() {
-            chars.next();
-            if next == '%' {
-                break;
-            }
-            variable.push(next);
-        }
-
-        if variable.is_empty() {
-            expanded.push("%");
-            continue;
-        }
-
-        if let Some(value) = env::var_os(&variable) {
-            expanded.push(value);
-        } else {
-            expanded.push(format!("%{variable}%"));
-        }
-    }
-    PathBuf::from(expanded)
 }
 
 fn prompt(message: &str) -> Result<String> {
