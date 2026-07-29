@@ -179,13 +179,13 @@ pub(crate) fn format_row(
             select_columns(
                 row,
                 &[
-                    "Elevation",
-                    "ICAO",
                     "ID",
+                    "Name",
+                    "ICAO",
+                    "PrimaryID",
                     "Latitude",
                     "Longitude",
-                    "Name",
-                    "PrimaryID",
+                    "Elevation",
                     "TransAlt",
                 ],
             )
@@ -451,6 +451,39 @@ fn integral_f64_to_i64(float: f64) -> Option<i64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn formats_airports_in_the_official_tfdi_field_order() {
+        let mut row = Map::new();
+        row.insert("ID".to_string(), Value::Number(Number::from(1)));
+        row.insert("Name".to_string(), Value::String("TEST".to_string()));
+        row.insert("ICAO".to_string(), Value::String("ZZZZ".to_string()));
+        row.insert("PrimaryID".to_string(), Value::Null);
+        row.insert("Latitude".to_string(), Value::Number(Number::from(1)));
+        row.insert("Longtitude".to_string(), Value::Number(Number::from(2)));
+        row.insert("Elevation".to_string(), Value::Number(Number::from(3)));
+        row.insert(
+            "TransitionAltitude".to_string(),
+            Value::Number(Number::from(4)),
+        );
+
+        let formatted = format_row(row, "Airports", None);
+        let keys = formatted.keys().map(String::as_str).collect::<Vec<_>>();
+
+        assert_eq!(
+            keys,
+            [
+                "ID",
+                "Name",
+                "ICAO",
+                "PrimaryID",
+                "Latitude",
+                "Longitude",
+                "Elevation",
+                "TransAlt",
+            ]
+        );
+    }
 
     #[test]
     fn formats_ils_numeric_strings_without_quotes() {
