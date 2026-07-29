@@ -1,10 +1,10 @@
 use std::fs;
+use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fenix_to_tfdi::adapter::tfdi::validate_candidate;
 
-#[test]
-fn validator_rejects_procedure_file_without_matching_terminal() {
+fn candidate_fixture() -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -35,10 +35,28 @@ fn validator_rejects_procedure_file_without_matching_terminal() {
         r#"{"cycle":"2607","revision":"2","name":"TFDi Design MD-11"}"#,
     )
     .unwrap();
+
+    root
+}
+
+#[test]
+fn validator_rejects_procedure_file_without_matching_terminal() {
+    let root = candidate_fixture();
     fs::write(root.join("ProcedureLegs").join("TermID_99.json"), "[]").unwrap();
 
     let error = validate_candidate(&root).expect_err("orphan procedure must fail validation");
 
     assert!(error.to_string().contains("has no matching terminal"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn validator_rejects_missing_required_main_json() {
+    let root = candidate_fixture();
+    fs::remove_file(root.join("Airports.json")).unwrap();
+
+    let error = validate_candidate(&root).expect_err("missing main JSON must fail validation");
+
+    assert!(error.to_string().contains("Airports.json"));
     fs::remove_dir_all(root).unwrap();
 }

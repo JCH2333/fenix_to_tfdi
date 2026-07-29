@@ -35,6 +35,26 @@ struct TerminalId {
 }
 
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
+    for file_name in [
+        "Config.json",
+        "cycle.json",
+        "Airports.json",
+        "Runways.json",
+        "Terminals.json",
+        "Navaids.json",
+        "NavaidLookup.json",
+        "Waypoints.json",
+        "WaypointLookup.json",
+        "Airways.json",
+        "AirwayLegs.json",
+        "ILSes.json",
+    ] {
+        let path = candidate_dir.join(file_name);
+        if !path.is_file() {
+            bail!("required TFDI file is missing: {}", path.display());
+        }
+    }
+
     let terminals_path = candidate_dir.join("Terminals.json");
     let terminals: Vec<TerminalId> = serde_json::from_reader(
         fs::File::open(&terminals_path)
