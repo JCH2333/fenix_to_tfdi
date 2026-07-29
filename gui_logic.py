@@ -71,11 +71,12 @@ def validate_conversion_paths(
     output: Path | str,
 ) -> None:
     """验证 GUI 转换路径不会覆盖已有目录。"""
-    del reference
     if not Path(database).is_file():
         raise ValueError(f"Fenix nd.db3 不存在：\n{database}")
     if not Path(route_segments).is_file():
         raise ValueError(f"RTE_SEG.csv 不存在：\n{route_segments}")
+    if not Path(reference).is_dir():
+        raise ValueError(f"TFDI 官方模板目录不存在：\n{reference}")
     if Path(output).exists():
         raise ValueError(f"输出目录已存在，请选择新的目录：\n{output}")
 

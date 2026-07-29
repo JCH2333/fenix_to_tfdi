@@ -127,6 +127,22 @@ class ConversionCommandTests(unittest.TestCase):
                     root / "output",
                 )
 
+    def test_rejects_missing_tfdi_template_directory(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            database = root / "nd.db3"
+            route_segments = root / "RTE_SEG.csv"
+            database.touch()
+            route_segments.touch()
+
+            with self.assertRaisesRegex(ValueError, "TFDI 官方模板目录不存在"):
+                validate_conversion_paths(
+                    database,
+                    route_segments,
+                    root / "missing-reference",
+                    root / "output",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()
