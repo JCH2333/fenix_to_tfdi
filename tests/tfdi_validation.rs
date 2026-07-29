@@ -262,3 +262,26 @@ fn validator_rejects_procedure_leg_with_wrong_terminal_id() {
     assert!(error.to_string().contains("TerminalID 4"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_procedure_leg_without_matching_waypoint() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Waypoints.json"), r#"[{"ID":20}]"#).unwrap();
+    fs::write(
+        root.join("Terminals.json"),
+        r#"[{"ID":3,"AirportID":1,"RwyID":null}]"#,
+    )
+    .unwrap();
+    fs::write(
+        root.join("ProcedureLegs").join("TermID_3.json"),
+        r#"[{"ID":10,"TerminalID":3,"WptID":99}]"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan WptID must fail validation");
+
+    assert!(error.to_string().contains("TermID_3.json"));
+    assert!(error.to_string().contains("WptID 99"));
+    fs::remove_dir_all(root).unwrap();
+}
