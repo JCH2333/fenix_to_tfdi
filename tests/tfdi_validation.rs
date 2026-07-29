@@ -151,3 +151,15 @@ fn validator_rejects_ils_without_matching_runway() {
     assert!(error.to_string().contains("RunwayID 99"));
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn validator_rejects_waypoint_without_matching_navaid() {
+    let root = candidate_fixture();
+    fs::write(root.join("Waypoints.json"), r#"[{"ID":5,"NavaidID":99}]"#).unwrap();
+
+    let error = validate_candidate(&root).expect_err("orphan navaid ID must fail validation");
+
+    assert!(error.to_string().contains("Waypoints.json"));
+    assert!(error.to_string().contains("NavaidID 99"));
+    fs::remove_dir_all(root).unwrap();
+}

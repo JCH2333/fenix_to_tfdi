@@ -60,6 +60,14 @@ struct IlsRunwayReference {
     runway_id: u64,
 }
 
+#[derive(Deserialize)]
+struct WaypointNavaidReference {
+    #[serde(rename = "ID")]
+    id: u64,
+    #[serde(rename = "NavaidID")]
+    navaid_id: Option<u64>,
+}
+
 pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     for file_name in [
         "Config.json",
@@ -90,6 +98,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     let mut airport_ids = HashSet::new();
     let mut runway_ids = HashSet::new();
     let mut terminal_ids = HashSet::new();
+    let mut navaid_ids = HashSet::new();
     for file_name in [
         "Airports.json",
         "Runways.json",
@@ -105,6 +114,7 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
             "Airports.json" => airport_ids = ids,
             "Runways.json" => runway_ids = ids,
             "Terminals.json" => terminal_ids = ids,
+            "Navaids.json" => navaid_ids = ids,
             _ => {}
         }
     }
@@ -171,6 +181,30 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
                 ils_path.display(),
                 ils.id,
                 ils.runway_id
+            );
+        }
+    }
+
+    let waypoints_path = candidate_dir.join("Waypoints.json");
+    let waypoints: Vec<WaypointNavaidReference> = serde_json::from_reader(
+        fs::File::open(&waypoints_path)
+            .with_context(|| format!("failed to open {}", waypoints_path.display()))?,
+    )
+    .with_context(|| {
+        format!(
+            "failed to parse references from {}",
+            waypoints_path.display()
+        )
+    })?;
+    for waypoint in waypoints {
+        if let Some(navaid_id) = waypoint.navaid_id
+            && !navaid_ids.contains(&navaid_id)
+        {
+            bail!(
+                "{} waypoint ID {} references missing NavaidID {}",
+                waypoints_path.display(),
+                waypoint.id,
+                navaid_id
             );
         }
     }
