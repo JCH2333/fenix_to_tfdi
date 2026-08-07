@@ -7,7 +7,13 @@ from pathlib import Path
 
 from build_update_package import build_package
 from gui import read_update_result
-from update_manager import GITHUB_API_URL, UpdateError, check_for_update, validate_update_package
+from update_manager import (
+    GITHUB_API_URL,
+    UpdateError,
+    apply_update_package,
+    check_for_update,
+    validate_update_package,
+)
 from version import __version__
 
 
@@ -64,6 +70,28 @@ class UpdateCheckTests(unittest.TestCase):
 
 
 class UpdatePackageTests(unittest.TestCase):
+    @staticmethod
+    def _write_valid_package(package_path: Path, version: str, gui_content: bytes) -> None:
+        files = {
+            "fenix_to_tfdi.exe": b"converter",
+            "gui.py": gui_content,
+            "gui_logic.py": b"logic",
+            "run_gui.bat": b"launcher",
+            "update_manager.py": b"updater",
+            "version.py": f'__version__ = "{version}"\n'.encode(),
+        }
+        manifest = {
+            "version": version,
+            "files": {
+                name: hashlib.sha256(content).hexdigest()
+                for name, content in files.items()
+            },
+        }
+        with zipfile.ZipFile(package_path, "w") as package:
+            for name, content in files.items():
+                package.writestr(name, content)
+            package.writestr("update-manifest.json", json.dumps(manifest))
+
     def test_rejects_payload_not_listed_in_manifest(self):
         files = {
             "fenix_to_tfdi.exe": b"converter",
@@ -102,6 +130,24 @@ class UpdatePackageTests(unittest.TestCase):
             self.assertEqual(package.name, f"fenix_to_tfdi-v{__version__}.zip")
             self.assertTrue(package.is_file())
             validate_update_package(package, __version__)
+
+    def test_installs_verified_files_with_a_backup_and_keeps_candidates(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            install = root / "install"
+            install.mkdir()
+            (install / "gui.py").write_bytes(b"old gui")
+            candidate = install / "output" / "candidate"
+            candidate.mkdir(parents=True)
+            (candidate / "Config.json").write_text("user data", encoding="utf-8")
+            package = root / "update.zip"
+            self._write_valid_package(package, "0.2.1", b"new gui")
+
+            backup = apply_update_package(package, install, "0.2.1")
+
+            self.assertEqual((install / "gui.py").read_bytes(), b"new gui")
+            self.assertEqual((backup / "gui.py").read_bytes(), b"old gui")
+            self.assertEqual((candidate / "Config.json").read_text(encoding="utf-8"), "user data")
 
 
 class UpdateResultTests(unittest.TestCase):
