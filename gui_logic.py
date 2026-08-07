@@ -5,6 +5,9 @@ import os
 from pathlib import Path
 
 
+TFDI_CANDIDATE_DIRECTORY_NAME = "Nav-Primary"
+
+
 @dataclass(frozen=True)
 class DetectedPaths:
     database: Path | None
@@ -62,6 +65,11 @@ def build_conversion_command(
         "--output",
         str(output),
     ]
+
+
+def candidate_output_path(output_parent: Path | str) -> Path:
+    """返回 TFDI 固定格式的隔离候选目录。"""
+    return Path(output_parent) / TFDI_CANDIDATE_DIRECTORY_NAME
 
 
 def validate_conversion_paths(

@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from gui_logic import (
     build_conversion_command,
+    candidate_output_path,
     detect_paths,
     find_converter_executable,
     validate_conversion_paths,
@@ -47,6 +48,12 @@ class PathDetectionTests(unittest.TestCase):
 
 
 class ConversionCommandTests(unittest.TestCase):
+    def test_uses_tfdi_nav_primary_as_the_fixed_candidate_directory_name(self):
+        self.assertEqual(
+            candidate_output_path(Path("output-parent")),
+            Path("output-parent") / "Nav-Primary",
+        )
+
     def test_builds_explicit_isolated_conversion_command(self):
         command = build_conversion_command(
             Path("fenix_to_tfdi.exe"),

@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 import json
 import os
 from pathlib import Path
@@ -16,6 +15,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from gui_logic import (
     build_conversion_command,
+    candidate_output_path,
     detect_paths,
     find_converter_executable,
     validate_conversion_paths,
@@ -150,16 +150,17 @@ class ConversionGUI:
         self._path_row(
             paths,
             4,
-            "候选输出目录：",
+            "候选输出位置：",
             self.output_var,
             "选择输出位置",
             self._browse_output_parent,
+            readonly=True,
         )
         paths.columnconfigure(1, weight=1)
 
         ttk.Label(
             paths,
-            text="输出必须是尚不存在的新目录；官方模板只会被读取和复制。",
+            text="固定目录名为 Nav-Primary；请选择其中尚未存在该目录的输出位置。",
             foreground="#666666",
         ).grid(row=5, column=1, columnspan=2, sticky=tk.W, padx=5, pady=(5, 0))
 
@@ -197,11 +198,16 @@ class ConversionGUI:
         variable: tk.StringVar,
         button_text: str,
         command,
+        readonly: bool = False,
     ) -> None:
         ttk.Label(parent, text=label, width=19, anchor=tk.E).grid(
             row=row, column=0, sticky=tk.E, pady=3
         )
-        ttk.Entry(parent, textvariable=variable).grid(
+        ttk.Entry(
+            parent,
+            textvariable=variable,
+            state="readonly" if readonly else "normal",
+        ).grid(
             row=row, column=1, sticky=tk.EW, padx=5, pady=3
         )
         ttk.Button(parent, text=button_text, command=command, width=20).grid(
@@ -232,7 +238,7 @@ class ConversionGUI:
     def _browse_output_parent(self) -> None:
         path = filedialog.askdirectory(title="选择候选输出所在位置")
         if path:
-            self.output_var.set(str(Path(path) / self._candidate_name()))
+            self.output_var.set(str(candidate_output_path(path)))
 
     def auto_detect(self) -> None:
         detected = detect_paths(self.app_dir)
@@ -547,11 +553,7 @@ class ConversionGUI:
         self.log_text.configure(state=tk.DISABLED)
 
     def _new_output_path(self) -> Path:
-        return self.app_dir / "output" / self._candidate_name()
-
-    @staticmethod
-    def _candidate_name() -> str:
-        return f"tfdi-candidate-{datetime.now():%Y%m%d-%H%M%S}"
+        return candidate_output_path(self.app_dir / "output")
 
     def run(self) -> None:
         self.root.mainloop()
