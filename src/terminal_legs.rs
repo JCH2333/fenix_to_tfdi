@@ -99,7 +99,8 @@ impl TerminalLegRecord {
         Ok(Self {
             id,
             terminal_id,
-            leg_type: normalize_numberish_json(&sql_value_to_json(row.get(2)?)),
+            // TFDI stores procedure leg types as string enums, for example "5".
+            leg_type: sql_value_to_json(row.get(2)?),
             transition: sql_value_to_json(row.get(3)?),
             track_code: sql_value_to_json(row.get(4)?),
             wpt_id_num: json_to_i64(Some(&wpt_id)),
@@ -929,6 +930,21 @@ mod tests {
         assert!(ignored_path.exists());
 
         fs::remove_dir_all(&output_dir).expect("remove temp dir");
+    }
+
+    #[test]
+    fn terminal_leg_type_preserves_the_tfdi_string_enum() {
+        let connection = Connection::open_in_memory().unwrap();
+        let record = connection
+            .query_row(
+                "SELECT 1, 2, '5', 'ALL', 'IF', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL",
+                [],
+                TerminalLegRecord::from_row,
+            )
+            .unwrap();
+
+        let output = serde_json::to_value(record).unwrap();
+        assert_eq!(output["Type"], Value::String("5".to_string()));
     }
 
     #[test]
