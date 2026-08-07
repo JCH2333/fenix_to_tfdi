@@ -14,7 +14,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
-use fenix_to_tfdi::adapter::tfdi::finalize_candidate;
+use fenix_to_tfdi::adapter::tfdi::{finalize_candidate, validate_candidate};
 use fenix_to_tfdi::candidate::copy_template_to_candidate;
 use fenix_to_tfdi::source::fenix::load_cycle_metadata;
 use rayon::prelude::*;
@@ -187,6 +187,11 @@ fn main() {
 
 fn run() -> Result<()> {
     let config = parse_args()?;
+    if let Some(candidate_dir) = config.validate_only.as_deref() {
+        validate_candidate(candidate_dir)?;
+        println!("Validation passed: {}", candidate_dir.display());
+        return Ok(());
+    }
     validate_explicit_input_files(&config)?;
     initialize_explicit_candidate(&config)?;
     let prewarm_handle = start_output_prewarm(&config);

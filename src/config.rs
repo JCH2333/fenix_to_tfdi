@@ -41,6 +41,7 @@ pub(crate) struct AppConfig {
     pub(crate) db_path: Option<PathBuf>,
     pub(crate) start_terminal_id: Option<i64>,
     pub(crate) rte_seg_path: Option<PathBuf>,
+    pub(crate) validate_only: Option<PathBuf>,
 }
 
 #[derive(Clone, Debug)]
@@ -58,6 +59,18 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
     if args.is_empty() {
         bail!("explicit conversion paths are required; run with --help for usage");
     }
+    if let [option, candidate_dir] = args.as_slice()
+        && option == "--validate"
+    {
+        return Ok(AppConfig {
+            output_targets: Vec::new(),
+            reference_dir: None,
+            db_path: None,
+            start_terminal_id: None,
+            rte_seg_path: None,
+            validate_only: Some(PathBuf::from(candidate_dir)),
+        });
+    }
     let request = parse_conversion_args(args)?;
     Ok(AppConfig {
         output_targets: vec![OutputLocation {
@@ -68,6 +81,7 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
         db_path: Some(request.db_path),
         start_terminal_id: None,
         rte_seg_path: Some(request.rte_seg_path),
+        validate_only: None,
     })
 }
 
@@ -75,7 +89,7 @@ fn print_help() {
     println!(
         "Fenix to TFDI navigation data converter\n\n\
 Usage:\n  fenix_to_tfdi [OPTIONS]\n\n\
-Options:\n  --db <PATH>         Fenix nd.db3 input\n  --rte-seg <PATH>    NAIP RTE_SEG.csv input\n  --reference <DIR>   Official TFDI Nav-Primary template\n  --output <DIR>      Isolated candidate output directory\n  -h, --help          Print help"
+Options:\n  --db <PATH>         Fenix nd.db3 input\n  --rte-seg <PATH>    NAIP RTE_SEG.csv input\n  --reference <DIR>   Official TFDI Nav-Primary template\n  --output <DIR>      Isolated candidate output directory\n  --validate <DIR>    Validate an existing isolated candidate directory\n  -h, --help          Print help"
     );
 }
 

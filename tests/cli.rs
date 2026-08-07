@@ -12,12 +12,33 @@ fn help_lists_explicit_conversion_paths() {
 
     assert!(output.status.success());
     let stdout = String::from_utf8(output.stdout).expect("help is utf-8");
-    for option in ["--db", "--rte-seg", "--reference", "--output"] {
+    for option in ["--db", "--rte-seg", "--reference", "--output", "--validate"] {
         assert!(
             stdout.contains(option),
             "missing {option} in help:\n{stdout}"
         );
     }
+}
+
+#[test]
+fn validate_mode_reports_missing_candidate_files() {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let candidate_dir = std::env::temp_dir().join(format!("fenix_to_tfdi_validate_{unique}"));
+    std::fs::create_dir_all(&candidate_dir).unwrap();
+
+    let output = Command::new(env!("CARGO_BIN_EXE_fenix_to_tfdi"))
+        .arg("--validate")
+        .arg(&candidate_dir)
+        .output()
+        .expect("run candidate validation");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("required TFDI file is missing"), "{stderr}");
+    std::fs::remove_dir_all(candidate_dir).unwrap();
 }
 
 #[test]
