@@ -259,11 +259,14 @@ def validate_update_package(package_path: Path | str, expected_version: str) -> 
         if sum(info.file_size for info in infos) > MAX_EXTRACTED_SIZE:
             raise UpdateError("更新包解压后超过允许大小")
         names: set[str] = set()
+        file_names: set[str] = set()
         for info in infos:
             name = _safe_member_path(info.filename).as_posix()
             if name in names:
                 raise UpdateError(f"更新包包含重复文件: {name}")
             names.add(name)
+            if not info.is_dir():
+                file_names.add(name)
             if ((info.external_attr >> 16) & 0o170000) == 0o120000:
                 raise UpdateError("更新包不能包含符号链接")
         try:
@@ -277,11 +280,13 @@ def validate_update_package(package_path: Path | str, expected_version: str) -> 
         files = manifest["files"]
         if not REQUIRED_PROGRAM_FILES.issubset(files):
             raise UpdateError("更新包缺少必要程序文件")
+        if set(map(str, files)) != file_names - {MANIFEST_NAME}:
+            raise UpdateError("更新包包含未列入清单或清单存在额外文件")
 
         validated: dict[str, str] = {}
         for name, expected_hash in files.items():
             safe_name = _safe_member_path(str(name)).as_posix()
-            if safe_name == MANIFEST_NAME or safe_name not in names:
+            if safe_name == MANIFEST_NAME or safe_name not in file_names:
                 raise UpdateError(f"更新包清单引用了缺失文件: {safe_name}")
             if not re.fullmatch(r"[0-9a-fA-F]{64}", str(expected_hash)):
                 raise UpdateError(f"更新包文件校验值无效: {safe_name}")

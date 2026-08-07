@@ -1,7 +1,11 @@
 import json
+import hashlib
+import tempfile
 import unittest
+import zipfile
+from pathlib import Path
 
-from update_manager import GITHUB_API_URL, check_for_update
+from update_manager import GITHUB_API_URL, UpdateError, check_for_update, validate_update_package
 
 
 class FakeResponse:
@@ -54,6 +58,35 @@ class UpdateCheckTests(unittest.TestCase):
         self.assertTrue(result.update_available)
         self.assertEqual(result.release.version, "0.2.1")
         self.assertEqual(result.release.asset_sha256, "a" * 64)
+
+
+class UpdatePackageTests(unittest.TestCase):
+    def test_rejects_payload_not_listed_in_manifest(self):
+        files = {
+            "fenix_to_tfdi.exe": b"converter",
+            "gui.py": b"gui",
+            "gui_logic.py": b"logic",
+            "run_gui.bat": b"launcher",
+            "update_manager.py": b"updater",
+            "version.py": b'__version__ = "0.2.1"\n',
+        }
+        manifest = {
+            "version": "0.2.1",
+            "files": {
+                name: hashlib.sha256(content).hexdigest()
+                for name, content in files.items()
+            },
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            package_path = Path(temp_dir) / "update.zip"
+            with zipfile.ZipFile(package_path, "w") as package:
+                for name, content in files.items():
+                    package.writestr(name, content)
+                package.writestr("extra.exe", b"unverified")
+                package.writestr("update-manifest.json", json.dumps(manifest))
+
+            with self.assertRaisesRegex(UpdateError, "未列入清单"):
+                validate_update_package(package_path, "0.2.1")
 
 
 if __name__ == "__main__":
