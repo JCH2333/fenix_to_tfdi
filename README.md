@@ -77,7 +77,32 @@ GUI 只调用现有 Rust 转换核心，不会自行改写数据规则。它只�
 验证，**不表示已经通过 TFDI MD-11 实机验证**。
 
 
-## 四、构建
+## 四、自动更新
+
+GUI 启动后会在后台检查 GitHub Release，也可以点击“检查更新”手动检查。发现新版时，
+用户确认后会下载更新包、校验 GitHub 提供的 SHA-256、校验 ZIP 内清单的每个文件，
+再备份当前程序并在 GUI 退出后替换程序文件、自动重启。
+
+更新只会替换以下程序文件：`fenix_to_tfdi.exe`、GUI 脚本、启动脚本、更新器和版本文件。
+它不会覆盖输入数据库、官方模板、候选输出、WASM 数据或用户备份。更新失败时会恢复
+备份的程序文件。
+
+当前版本仍是**未经实机验证的测试版**。依照项目规则，暂时不会创建 GitHub Release，
+因此“检查更新”可能显示尚无可用更新；该机制会在未来通过实机验证的版本发布后自动生效。
+
+维护者制作未来更新包时，先构建 release 程序，再执行：
+
+```powershell
+python .\build_update_package.py `
+  --exe .\target\release\fenix_to_tfdi.exe `
+  --output-dir .\external-test-packages
+```
+
+生成的 `fenix_to_tfdi-vX.Y.Z.zip` 应作为同版本 GitHub Release 的资产上传。更新器会拒绝
+名称、版本、GitHub SHA-256 或内部清单不一致的更新包。
+
+
+## 五、构建
 
 Windows 上建议使用 GNU 工具链：
 
@@ -90,7 +115,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 项目所在路径含中文时，建议将 `CARGO_TARGET_DIR` 设置为纯英文临时目录。
 
 
-## 五、命令行转换（高级）
+## 六、命令行转换（高级）
 
 ```powershell
 .\target\release\fenix_to_tfdi.exe `
@@ -114,7 +139,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 程序不会自动探测或覆盖活动的游戏目录。
 
 
-## 六、自动验证
+## 七、自动验证
 
 转换完成后会自动执行 TFDI 专用验证，任一检查失败都会返回非零退出状态：
 
@@ -128,7 +153,7 @@ cargo +stable-x86_64-pc-windows-gnu build --release
 本地验证只能证明输出符合已知的 TFDI 文件契约，不能代替实机验证。
 
 
-## 七、测试安装到 MSFS 2024
+## 八、测试安装到 MSFS 2024
 
 TFDI 活动数据通常位于：
 
@@ -150,7 +175,7 @@ TFDI 活动数据通常位于：
 当前工具故意不提供“直接覆盖”参数，避免在模拟器运行时破坏 WASM 数据。
 
 
-## 八、恢复官方数据
+## 九、恢复官方数据
 
 1. 完全退出 MSFS 2024。
 2. 将当前测试用 `Nav-Primary` 移出 WASM 目录。
@@ -159,7 +184,7 @@ TFDI 活动数据通常位于：
 5. 再启动 MSFS 2024。
 
 
-## 九、建议的实机测试
+## 十、建议的实机测试
 
 1. 在 FMS 中输入 `ZBCF`、`ZUNZ`、`ZUUU`，确认机场可检索且不重复。
 2. 分别设置为出发和到达机场。
@@ -169,7 +194,7 @@ TFDI 活动数据通常位于：
 6. 最后退出游戏，确认没有延迟崩溃。
 
 
-## 十、文件说明
+## 十一、文件说明
 
 ```text
 src/source/fenix.rs       Fenix 数据源元数据解析
@@ -182,11 +207,14 @@ gui.py                    面向用户的 Tkinter 图形界面
 gui_logic.py              GUI 路径检测、校验与命令构造
 python_tests/             GUI 公共逻辑测试
 run_gui.bat               Windows 双击启动脚本
+update_manager.py         GitHub 更新检查、验证下载和安装器
+build_update_package.py   生成带哈希清单的一键更新 ZIP
+version.py                GUI 与更新包共享的版本号
 docs/tfdi-contract.md     已检查的 TFDI 运行时契约
 ```
 
 
-## 十一、注意事项
+## 十二、注意事项
 
 1. 当前候选只能标记为“测试版 / 未经实机验证”。
 2. 不要在 MSFS 2024 运行时覆盖 WASM 文件。
@@ -195,9 +223,10 @@ docs/tfdi-contract.md     已检查的 TFDI 运行时契约
 5. 每个 AIRAC 周期必须使用对应的 Fenix 数据和 TFDI 官方模板重新生成。
 6. 没有实机结果前不会创建正式版本号、Git tag 或 GitHub Release。
 7. 输入数据库、官方模板、生成候选、备份、日志和外部测试包均不提交到 GitHub。
+8. 自动更新只会接受 GitHub Release 中同版本的已校验更新包；当前测试版不发布 Release。
 
 
-## 十二、参考项目
+## 十三、参考项目
 
 - [Yuzuriha03/Fenix2TFDINavDataConverter](https://github.com/Yuzuriha03/Fenix2TFDINavDataConverter)
 - [JCH2333/fenix_to_ini](https://github.com/JCH2333/fenix_to_ini)
