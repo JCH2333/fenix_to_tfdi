@@ -936,42 +936,46 @@ mod tests {
         let connection = Connection::open_in_memory().unwrap();
         connection
             .execute(
-                "CREATE TABLE Terminals (ID INTEGER, ICAO TEXT, Name TEXT, FullName TEXT)",
+                "CREATE TABLE Terminals (ID INTEGER, AirportID INTEGER, ICAO TEXT, Name TEXT, FullName TEXT)",
                 [],
             )
             .unwrap();
         connection
             .execute(
-                "INSERT INTO Terminals VALUES (174768,'ZULS','R10L','R10L RNAV 10L'),(200000,'ZBAA','R10L','R10L RNAV 10L')",
+                "INSERT INTO Terminals VALUES (174768,1,'ZULS','R10L','R10L RNAV 10L'),(180000,NULL,'ZZZZ','ORPHAN','ORPHAN'),(200000,1,'ZBAA','R10L','R10L RNAV 10L')",
                 [],
             )
             .unwrap();
 
         let excluded = fetch_excluded_source_terminal_ids(&connection).unwrap();
 
-        assert_eq!(excluded, std::iter::once(174768).collect());
+        assert_eq!(excluded, [174768, 180000].into_iter().collect());
     }
 }
 
 fn fetch_excluded_source_terminal_ids(conn: &Connection) -> Result<FxHashSet<i64>> {
     let mut statement = conn
-        .prepare("SELECT ID, ICAO, Name, FullName FROM Terminals")
+        .prepare("SELECT ID, AirportID, ICAO, Name, FullName FROM Terminals")
         .context("failed to query source terminal filters")?;
     let rows = statement
         .query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
-                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<i64>>(1)?,
                 row.get::<_, Option<String>>(2)?,
                 row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
             ))
         })
         .context("failed to iterate source terminal filters")?;
 
     let mut excluded = fast_hash_set();
     for row in rows {
-        let (id, icao, name, full_name) = row.context("failed to read source terminal filter")?;
-        if is_excluded_terminal(icao.as_deref(), name.as_deref(), full_name.as_deref()) {
+        let (id, airport_id, icao, name, full_name) =
+            row.context("failed to read source terminal filter")?;
+        if airport_id.is_none()
+            || is_excluded_terminal(icao.as_deref(), name.as_deref(), full_name.as_deref())
+        {
             excluded.insert(id);
         }
     }

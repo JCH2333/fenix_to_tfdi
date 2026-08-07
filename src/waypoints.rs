@@ -440,6 +440,9 @@ fn build_filtered_terminal_rows(
             }
 
             apply_foreign_key_remaps(&mut row, foreign_key_remaps);
+            if json_to_i64(row.get("AirportID")).is_none() {
+                return None;
+            }
             Some(format_row(row, "Terminals", None))
         })
         .collect::<Vec<_>>();
@@ -781,6 +784,11 @@ mod tests {
             terminal_row(10, "ZULS", "DEP1A", "DEP1A RWY10"),
             terminal_row(11, "ZBAA", "OK1A", "OK1A"),
             terminal_row(12, "ZULS", "DUM08A", "DUM08A"),
+            {
+                let mut row = terminal_row(13, "ZZZZ", "ORPHAN", "ORPHAN");
+                row.insert("AirportID".to_string(), Value::Null);
+                row
+            },
         ];
         let existing_rows = vec![
             terminal_row(5, "ZULS", "R10-Z", "R10-Z"),
