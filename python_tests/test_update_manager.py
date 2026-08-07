@@ -5,8 +5,10 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from build_update_package import build_package
 from gui import read_update_result
 from update_manager import GITHUB_API_URL, UpdateError, check_for_update, validate_update_package
+from version import __version__
 
 
 class FakeResponse:
@@ -88,6 +90,18 @@ class UpdatePackageTests(unittest.TestCase):
 
             with self.assertRaisesRegex(UpdateError, "未列入清单"):
                 validate_update_package(package_path, "0.2.1")
+
+    def test_builds_a_valid_package_from_a_supplied_converter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            converter = root / "fenix_to_tfdi.exe"
+            converter.write_bytes(b"converter binary")
+
+            package = build_package(root / "packages", converter, __version__)
+
+            self.assertEqual(package.name, f"fenix_to_tfdi-v{__version__}.zip")
+            self.assertTrue(package.is_file())
+            validate_update_package(package, __version__)
 
 
 class UpdateResultTests(unittest.TestCase):
