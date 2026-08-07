@@ -5,6 +5,7 @@ import unittest
 import zipfile
 from pathlib import Path
 
+from gui import read_update_result
 from update_manager import GITHUB_API_URL, UpdateError, check_for_update, validate_update_package
 
 
@@ -87,6 +88,21 @@ class UpdatePackageTests(unittest.TestCase):
 
             with self.assertRaisesRegex(UpdateError, "未列入清单"):
                 validate_update_package(package_path, "0.2.1")
+
+
+class UpdateResultTests(unittest.TestCase):
+    def test_reads_and_removes_installer_result_file(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            result_path = Path(temp_dir) / "result.json"
+            result_path.write_text(
+                json.dumps({"success": True, "version": "0.2.1"}),
+                encoding="utf-8",
+            )
+
+            result = read_update_result(["--update-result", str(result_path)])
+
+        self.assertEqual(result, {"success": True, "version": "0.2.1"})
+        self.assertFalse(result_path.exists())
 
 
 if __name__ == "__main__":
