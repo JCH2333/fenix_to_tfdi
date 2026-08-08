@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use fenix_to_tfdi::adapter::tfdi::{finalize_candidate, validate_candidate};
 use fenix_to_tfdi::candidate::copy_template_to_candidate;
+use fenix_to_tfdi::ils_reference::MergedIlsReferenceDatabase;
 use fenix_to_tfdi::source::fenix::load_cycle_metadata;
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -198,7 +199,19 @@ fn run() -> Result<()> {
     let airway_reference_json_prewarm_handle = start_airway_reference_json_prewarm(&config);
     let table_index_prewarm_handle = start_table_index_prewarm(&config);
 
-    let (resolved_paths, rte_seg_prewarm_handle) = resolve_input_paths(&config)?;
+    let (mut resolved_paths, rte_seg_prewarm_handle) = resolve_input_paths(&config)?;
+    let enriched_database = if let Some(reference_db) = config.ils_reference_db_path.as_deref() {
+        let database = MergedIlsReferenceDatabase::create(&resolved_paths.db_path, reference_db)?;
+        println!(
+            "Restored {} verified missing Chinese ILS procedures from the reference cycle.",
+            database.added_procedures
+        );
+        resolved_paths.db_path = database.path().to_path_buf();
+        resolved_paths.db_validated_during_prompt = false;
+        Some(database)
+    } else {
+        None
+    };
     let total_start = Instant::now();
     let prewarmed_outputs = join_output_prewarm(prewarm_handle)?;
     let mut preloaded_table_indices = join_table_index_prewarm(table_index_prewarm_handle)?;
@@ -226,6 +239,7 @@ fn run() -> Result<()> {
 
     print_output_reports(&output_results, total_start.elapsed());
 
+    drop(enriched_database);
     Ok(())
 }
 

@@ -39,6 +39,7 @@ pub(crate) struct AppConfig {
     pub(crate) output_targets: Vec<OutputLocation>,
     pub(crate) reference_dir: Option<PathBuf>,
     pub(crate) db_path: Option<PathBuf>,
+    pub(crate) ils_reference_db_path: Option<PathBuf>,
     pub(crate) start_terminal_id: Option<i64>,
     pub(crate) rte_seg_path: Option<PathBuf>,
     pub(crate) validate_only: Option<PathBuf>,
@@ -66,6 +67,7 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
             output_targets: Vec::new(),
             reference_dir: None,
             db_path: None,
+            ils_reference_db_path: None,
             start_terminal_id: None,
             rte_seg_path: None,
             validate_only: Some(PathBuf::from(candidate_dir)),
@@ -79,6 +81,7 @@ pub(crate) fn parse_args() -> Result<AppConfig> {
         }],
         reference_dir: Some(request.reference_dir),
         db_path: Some(request.db_path),
+        ils_reference_db_path: request.ils_reference_db_path,
         start_terminal_id: None,
         rte_seg_path: Some(request.rte_seg_path),
         validate_only: None,
@@ -89,7 +92,7 @@ fn print_help() {
     println!(
         "Fenix to TFDI navigation data converter\n\n\
 Usage:\n  fenix_to_tfdi [OPTIONS]\n\n\
-Options:\n  --db <PATH>         Fenix nd.db3 input\n  --rte-seg <PATH>    NAIP RTE_SEG.csv input\n  --reference <DIR>   Official TFDI Nav-Primary template\n  --output <DIR>      Isolated candidate output directory\n  --validate <DIR>    Validate an existing isolated candidate directory\n  -h, --help          Print help"
+Options:\n  --db <PATH>         Fenix nd.db3 input\n  --ils-reference-db <PATH>  Optional older Fenix database used only to restore verified missing Chinese ILS procedures\n  --rte-seg <PATH>    NAIP RTE_SEG.csv input\n  --reference <DIR>   Official TFDI Nav-Primary template\n  --output <DIR>      Isolated candidate output directory\n  --validate <DIR>    Validate an existing isolated candidate directory\n  -h, --help          Print help"
     );
 }
 

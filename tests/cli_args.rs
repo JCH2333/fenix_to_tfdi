@@ -26,6 +26,28 @@ fn explicit_paths_form_one_isolated_conversion_request() {
 }
 
 #[test]
+fn optional_ils_reference_database_is_preserved_in_conversion_request() {
+    let request = parse_conversion_args([
+        "--db",
+        "inputs/nd-2608.db3",
+        "--ils-reference-db",
+        "inputs/nd-2607-ils.db3",
+        "--rte-seg",
+        "inputs/RTE_SEG.csv",
+        "--reference",
+        "official/Nav-Primary",
+        "--output",
+        "output/Nav-Primary",
+    ])
+    .expect("valid conversion arguments with ILS reference");
+
+    assert_eq!(
+        request.ils_reference_db_path,
+        Some(PathBuf::from("inputs/nd-2607-ils.db3"))
+    );
+}
+
+#[test]
 fn active_reference_directory_cannot_be_used_as_candidate_output() {
     let error = parse_conversion_args([
         "--db",

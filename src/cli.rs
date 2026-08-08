@@ -6,6 +6,7 @@ use anyhow::{Context, Result, bail};
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ConversionRequest {
     pub db_path: PathBuf,
+    pub ils_reference_db_path: Option<PathBuf>,
     pub rte_seg_path: PathBuf,
     pub reference_dir: PathBuf,
     pub output_dir: PathBuf,
@@ -18,6 +19,7 @@ where
 {
     let mut args = args.into_iter().map(Into::into);
     let mut db_path = None;
+    let mut ils_reference_db_path = None;
     let mut rte_seg_path = None;
     let mut reference_dir = None;
     let mut output_dir = None;
@@ -32,6 +34,7 @@ where
         let value = PathBuf::from(value);
         match option {
             "--db" => db_path = Some(value),
+            "--ils-reference-db" => ils_reference_db_path = Some(value),
             "--rte-seg" => rte_seg_path = Some(value),
             "--reference" => reference_dir = Some(value),
             "--output" => output_dir = Some(value),
@@ -47,6 +50,7 @@ where
 
     Ok(ConversionRequest {
         db_path: db_path.context("missing required option --db")?,
+        ils_reference_db_path,
         rte_seg_path: rte_seg_path.context("missing required option --rte-seg")?,
         reference_dir,
         output_dir,
