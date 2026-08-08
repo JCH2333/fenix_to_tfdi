@@ -344,6 +344,24 @@ fn validator_rejects_procedure_leg_without_matching_center_waypoint() {
 }
 
 #[test]
+fn validator_rejects_rf_procedure_leg_without_center_waypoint() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(root.join("Terminals.json"), r#"[{"ID":3,"AirportID":1,"RwyID":null}]"#)
+        .unwrap();
+    fs::write(
+        root.join("ProcedureLegs").join("TermID_3.json"),
+        r#"[{"ID":10,"TerminalID":3,"TrackCode":"RF","CenterID":null}]"#,
+    )
+    .unwrap();
+
+    let error = validate_candidate(&root).expect_err("RF without CenterID must fail validation");
+
+    assert!(error.to_string().contains("RF procedure leg ID 10"));
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn validator_rejects_inconsistent_cycle_metadata() {
     let root = candidate_fixture();
     fs::write(

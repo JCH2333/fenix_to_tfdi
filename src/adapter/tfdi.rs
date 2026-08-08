@@ -93,6 +93,8 @@ struct ProcedureTerminalReference {
     navaid_id: Option<u64>,
     #[serde(rename = "CenterID")]
     center_id: Option<u64>,
+    #[serde(rename = "TrackCode")]
+    track_code: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -406,6 +408,13 @@ fn validate_procedure_file(
                 path.display(),
                 leg.id,
                 center_id
+            );
+        }
+        if leg.track_code.as_deref() == Some("RF") && leg.center_id.is_none() {
+            bail!(
+                "{} RF procedure leg ID {} has no CenterID",
+                path.display(),
+                leg.id
             );
         }
     }

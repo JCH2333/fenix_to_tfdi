@@ -64,6 +64,14 @@ The official template contains `ZUUU` but does not contain `ZBCF` or `ZUNZ`. The
 - `ZUNZ`: high-elevation airport, transition altitude, runways, and procedures.
 - `ZUUU`: replacement of an existing airport without duplication.
 
+## RF procedure legs
+
+TFDI's official 2608 data has a valid `CenterID` on every `TrackCode="RF"` leg.
+Fenix 2608 has two ZUXC `MYD36A` RF legs with center coordinates but no center ID;
+the converter resolves the coordinates to the unique Fenix waypoint before remapping IDs.
+Candidates reject any RF leg without a valid center waypoint reference. This rule is
+covered by the terminal-leg coordinate lookup test and the TFDI candidate validator test.
+
 ## Current upstream gaps
 
 The upstream converter used as the initial code base has these confirmed engineering gaps:
@@ -75,4 +83,3 @@ The upstream converter used as the initial code base has these confirmed enginee
 - does not update `Config.json` or `cycle.json` from the selected source cycle;
 - has no conversion report or target-contract validator;
 - has no separate normalized source-model and TFDI-adapter boundary.
-

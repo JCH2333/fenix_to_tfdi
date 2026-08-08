@@ -3,7 +3,7 @@ use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use rayon::prelude::*;
 use rusqlite::{Connection, params_from_iter};
 use rustc_hash::{FxBuildHasher, FxHashMap, FxHashSet};
@@ -346,6 +346,7 @@ pub(crate) fn export_terminal_legs(
         let db_terminal_metadata = t_terminal_metadata.elapsed();
 
         let runway_ids: FxHashSet<i64> = runway_ids_by_terminal.values().copied().collect();
+        recover_missing_rf_center_ids(conn, &mut terminal_legs)?;
         let waypoint_ids = collect_waypoint_reference_ids(&terminal_legs);
         let navaid_ids = collect_navaid_reference_ids(&terminal_legs);
 
@@ -709,6 +710,55 @@ fn fetch_waypoint_coordinates_by_db_ids(
     })
 }
 
+fn recover_missing_rf_center_ids(conn: &Connection, legs: &mut [TerminalLegRecord]) -> Result<()> {
+    let longitude_col = resolve_longitude_column(conn, "Waypoints")?;
+    for leg in legs {
+        if leg.track_code != Value::String("RF".to_string()) || leg.center_id_num.is_some() {
+            continue;
+        }
+        let (Some(latitude), Some(longitude)) = (leg.center_lat.as_f64(), leg.center_lon.as_f64())
+        else {
+            bail!(
+                "RF terminal leg {} has no CenterID or usable center coordinates",
+                leg.id
+            );
+        };
+        let waypoint_id = find_unique_waypoint_id_at_coordinates(
+            conn,
+            &longitude_col,
+            latitude,
+            longitude,
+        )?;
+        leg.center_id = Value::Number(Number::from(waypoint_id));
+        leg.center_id_num = Some(waypoint_id);
+    }
+    Ok(())
+}
+
+fn find_unique_waypoint_id_at_coordinates(
+    conn: &Connection,
+    longitude_col: &str,
+    latitude: f64,
+    longitude: f64,
+) -> Result<i64> {
+    let query = format!(
+        "SELECT ID FROM Waypoints WHERE abs(Latitude - ?1) <= 0.000001 AND abs({longitude_col} - ?2) <= 0.000001 ORDER BY ID"
+    );
+    let mut statement = conn
+        .prepare(&query)
+        .context("failed to look up RF center waypoint")?;
+    let ids = statement
+        .query_map([latitude, longitude], |row| row.get::<_, i64>(0))
+        .context("failed to query RF center waypoint")?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("failed to read RF center waypoint")?;
+    match ids.as_slice() {
+        [id] => Ok(*id),
+        [] => bail!("RF center coordinates do not match a waypoint"),
+        _ => bail!("RF center coordinates match multiple waypoints"),
+    }
+}
+
 fn fetch_navaid_coordinates_by_db_ids(
     conn: &Connection,
     db_ids: &FxHashSet<i64>,
@@ -945,6 +995,34 @@ mod tests {
 
         let output = serde_json::to_value(record).unwrap();
         assert_eq!(output["Type"], Value::String("5".to_string()));
+    }
+
+    #[test]
+    fn rf_center_coordinates_resolve_to_one_waypoint() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute(
+                "CREATE TABLE Waypoints (ID INTEGER, Latitude REAL, Longtitude REAL)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO Waypoints VALUES (325995, 27.711278, 101.307444)",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(
+            find_unique_waypoint_id_at_coordinates(
+                &connection,
+                "Longtitude",
+                27.711278,
+                101.307444,
+            )
+            .unwrap(),
+            325995
+        );
     }
 
     #[test]
