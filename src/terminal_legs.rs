@@ -310,6 +310,7 @@ pub(crate) fn export_terminal_legs(
 ) -> Result<TerminalLegExportStats> {
     let base_terminal_dir = base_json_dir.unwrap_or(output_dir);
     let source_terminal_ids = source_terminal_ids_to_export(db_path, Some(base_terminal_dir))?;
+    let existing_terminal_ids = load_existing_terminal_ids(base_terminal_dir)?;
     let excluded_existing_terminal_ids = load_excluded_existing_terminal_ids(base_terminal_dir)?;
     let excluded_source_terminal_ids =
         with_connection(db_path, fetch_excluded_source_terminal_ids)?;
@@ -338,12 +339,10 @@ pub(crate) fn export_terminal_legs(
         runway_ids_by_terminal
             .retain(|terminal_id, _| !excluded_source_terminal_ids.contains(terminal_id));
         let terminal_ids_for_cleanup = if cleanup_required {
-            let terminal_ids = fetch_all_terminal_ids(conn)?;
             Some(cleanup_allowed_terminal_ids(
-                terminal_ids,
+                &existing_terminal_ids,
                 &source_terminal_ids,
                 &excluded_existing_terminal_ids,
-                &excluded_source_terminal_ids,
             ))
         } else {
             None
@@ -571,31 +570,36 @@ fn load_excluded_existing_terminal_ids(output_dir: &Path) -> Result<FxHashSet<i6
         .collect())
 }
 
-fn fetch_all_terminal_ids(conn: &Connection) -> Result<FxHashSet<i64>> {
-    let mut statement = conn
-        .prepare("SELECT ID FROM Terminals")
-        .context("failed to query terminal ids")?;
-    let rows = statement
-        .query_map([], |row| row.get::<_, i64>(0))
-        .context("failed to iterate terminal ids")?;
-    rows.collect::<rusqlite::Result<FxHashSet<_>>>()
-        .context("failed to read terminal ids")
+fn load_existing_terminal_ids(output_dir: &Path) -> Result<FxHashSet<i64>> {
+    let path = output_dir.join("Terminals.json");
+    if !path.exists() {
+        return Ok(fast_hash_set());
+    }
+
+    let bytes = fs::read(&path)
+        .with_context(|| format!("failed to read existing terminals json: {}", path.display()))?;
+    let rows: Vec<ExistingTerminalFilterRow> =
+        serde_json::from_slice(&bytes).with_context(|| {
+            format!(
+                "failed to parse existing terminals json: {}",
+                path.display()
+            )
+        })?;
+    Ok(rows.into_iter().filter_map(|row| row.id).collect())
 }
 
 fn cleanup_allowed_terminal_ids(
-    terminal_ids: FxHashSet<i64>,
+    existing_terminal_ids: &FxHashSet<i64>,
     source_terminal_ids: &FxHashSet<i64>,
     excluded_existing_terminal_ids: &FxHashSet<i64>,
-    excluded_source_terminal_ids: &FxHashSet<i64>,
 ) -> FxHashSet<i64> {
-    terminal_ids
-        .into_iter()
-        .filter(|id| {
-            !excluded_source_terminal_ids.contains(id)
-                && (!excluded_existing_terminal_ids.contains(id)
-                    || source_terminal_ids.contains(id))
-        })
-        .collect()
+    let mut allowed = existing_terminal_ids
+        .iter()
+        .filter(|id| !excluded_existing_terminal_ids.contains(id))
+        .copied()
+        .collect::<FxHashSet<_>>();
+    allowed.extend(source_terminal_ids.iter().copied());
+    allowed
 }
 
 fn group_terminal_legs_by_terminal(
@@ -1122,20 +1126,18 @@ mod tests {
     }
 
     #[test]
-    fn cleanup_keeps_source_terminal_replacing_an_excluded_reference_id() {
-        let terminal_ids = [35762, 35763, 35764].into_iter().collect();
+    fn cleanup_uses_the_final_terminal_id_set() {
+        let existing_terminal_ids = [35762, 37038, 37039].into_iter().collect();
         let source_terminal_ids = std::iter::once(35762).collect();
         let excluded_existing_terminal_ids = [35762, 35763].into_iter().collect();
-        let excluded_source_terminal_ids = std::iter::once(35764).collect();
 
         let allowed = cleanup_allowed_terminal_ids(
-            terminal_ids,
+            &existing_terminal_ids,
             &source_terminal_ids,
             &excluded_existing_terminal_ids,
-            &excluded_source_terminal_ids,
         );
 
-        assert_eq!(allowed, std::iter::once(35762).collect());
+        assert_eq!(allowed, [35762, 37038, 37039].into_iter().collect());
     }
 }
 

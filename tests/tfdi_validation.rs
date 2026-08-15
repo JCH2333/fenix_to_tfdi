@@ -236,6 +236,21 @@ fn validator_rejects_terminal_without_procedure_file() {
 }
 
 #[test]
+fn validator_accepts_verified_template_terminal_without_procedure_file() {
+    let root = candidate_fixture();
+    fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();
+    fs::write(
+        root.join("Terminals.json"),
+        r#"[{"ID":97104,"AirportID":1,"RwyID":null,"ICAO":"ZYYJ","FullName":"Q09 NDBDME 09"}]"#,
+    )
+    .unwrap();
+
+    validate_candidate(&root).expect("verified template exception must remain valid");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn validator_rejects_malformed_procedure_file() {
     let root = candidate_fixture();
     fs::write(root.join("Airports.json"), r#"[{"ID":1}]"#).unwrap();

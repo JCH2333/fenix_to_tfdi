@@ -51,6 +51,10 @@ struct TerminalAirportReference {
     airport_id: u64,
     #[serde(rename = "RwyID")]
     runway_id: Option<u64>,
+    #[serde(rename = "ICAO")]
+    icao: Option<String>,
+    #[serde(rename = "FullName")]
+    full_name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -204,7 +208,12 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
             terminals_path.display()
         )
     })?;
-    for terminal in terminals {
+    let optional_terminal_ids_without_procedure_file = terminals
+        .iter()
+        .filter(|terminal| is_verified_optional_terminal_without_procedure_file(terminal))
+        .map(|terminal| terminal.id)
+        .collect::<HashSet<_>>();
+    for terminal in &terminals {
         if !airport_ids.contains(&terminal.airport_id) {
             bail!(
                 "{} terminal ID {} references missing AirportID {}",
@@ -342,7 +351,11 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
     procedure_files.sort_unstable_by_key(|(id, _)| *id);
     let procedure_file_ids: HashSet<u64> = procedure_files.iter().map(|(id, _)| *id).collect();
-    if let Some(id) = terminal_ids.difference(&procedure_file_ids).min() {
+    if let Some(id) = terminal_ids
+        .difference(&procedure_file_ids)
+        .filter(|id| !optional_terminal_ids_without_procedure_file.contains(id))
+        .min()
+    {
         bail!(
             "terminal ID {} has no procedure file: {}",
             id,
@@ -358,6 +371,20 @@ pub fn validate_candidate(candidate_dir: &Path) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn is_verified_optional_terminal_without_procedure_file(
+    terminal: &TerminalAirportReference,
+) -> bool {
+    terminal.id == 97104
+        && terminal
+            .icao
+            .as_deref()
+            .is_some_and(|icao| icao.eq_ignore_ascii_case("ZYYJ"))
+        && terminal
+            .full_name
+            .as_deref()
+            .is_some_and(|name| name.eq_ignore_ascii_case("Q09 NDBDME 09"))
 }
 
 fn validate_procedure_file(

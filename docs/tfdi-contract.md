@@ -72,6 +72,19 @@ the converter resolves the coordinates to the unique Fenix waypoint before remap
 Candidates reject any RF leg without a valid center waypoint reference. This rule is
 covered by the terminal-leg coordinate lookup test and the TFDI candidate validator test.
 
+## Procedure-file exception
+
+The official 2608 no-NAIP `Nav-Primary` baseline was checked on 2026-08-15.
+Among its 97,104 terminal rows, only terminal `97104` has no
+`ProcedureLegs\TermID_97104.json`: `ZYYJ`, `Q09 NDBDME 09`. The converter
+preserves this verified template exception. Every other terminal in a candidate
+must have a matching procedure file, and the validator rejects missing files.
+
+When source and template terminal IDs collide, procedure-file cleanup uses the
+final terminal set: retained template terminals plus source terminals selected
+for output. A source terminal rejected by a target-specific filter must not
+delete an unrelated retained template procedure that happens to share its ID.
+
 ## Current upstream gaps
 
 The upstream converter used as the initial code base has these confirmed engineering gaps:
