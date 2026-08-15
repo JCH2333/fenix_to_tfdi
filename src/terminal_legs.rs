@@ -338,12 +338,13 @@ pub(crate) fn export_terminal_legs(
         runway_ids_by_terminal
             .retain(|terminal_id, _| !excluded_source_terminal_ids.contains(terminal_id));
         let terminal_ids_for_cleanup = if cleanup_required {
-            let mut terminal_ids = fetch_all_terminal_ids(conn)?;
-            terminal_ids.retain(|id| {
-                !excluded_existing_terminal_ids.contains(id)
-                    && !excluded_source_terminal_ids.contains(id)
-            });
-            Some(terminal_ids)
+            let terminal_ids = fetch_all_terminal_ids(conn)?;
+            Some(cleanup_allowed_terminal_ids(
+                terminal_ids,
+                &source_terminal_ids,
+                &excluded_existing_terminal_ids,
+                &excluded_source_terminal_ids,
+            ))
         } else {
             None
         };
@@ -579,6 +580,22 @@ fn fetch_all_terminal_ids(conn: &Connection) -> Result<FxHashSet<i64>> {
         .context("failed to iterate terminal ids")?;
     rows.collect::<rusqlite::Result<FxHashSet<_>>>()
         .context("failed to read terminal ids")
+}
+
+fn cleanup_allowed_terminal_ids(
+    terminal_ids: FxHashSet<i64>,
+    source_terminal_ids: &FxHashSet<i64>,
+    excluded_existing_terminal_ids: &FxHashSet<i64>,
+    excluded_source_terminal_ids: &FxHashSet<i64>,
+) -> FxHashSet<i64> {
+    terminal_ids
+        .into_iter()
+        .filter(|id| {
+            !excluded_source_terminal_ids.contains(id)
+                && (!excluded_existing_terminal_ids.contains(id)
+                    || source_terminal_ids.contains(id))
+        })
+        .collect()
 }
 
 fn group_terminal_legs_by_terminal(
@@ -1102,6 +1119,23 @@ mod tests {
 
         assert_eq!(terminal_legs.len(), 1);
         assert_eq!(terminal_legs[0].terminal_id, 35762);
+    }
+
+    #[test]
+    fn cleanup_keeps_source_terminal_replacing_an_excluded_reference_id() {
+        let terminal_ids = [35762, 35763, 35764].into_iter().collect();
+        let source_terminal_ids = std::iter::once(35762).collect();
+        let excluded_existing_terminal_ids = [35762, 35763].into_iter().collect();
+        let excluded_source_terminal_ids = std::iter::once(35764).collect();
+
+        let allowed = cleanup_allowed_terminal_ids(
+            terminal_ids,
+            &source_terminal_ids,
+            &excluded_existing_terminal_ids,
+            &excluded_source_terminal_ids,
+        );
+
+        assert_eq!(allowed, std::iter::once(35762).collect());
     }
 }
 
