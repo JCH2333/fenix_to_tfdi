@@ -16,7 +16,9 @@ use crate::db_json::{
 };
 use crate::stats::{PhaseDurations, TerminalLegExportStats, TerminalLegTimingBreakdown};
 use crate::terminal_filters::is_excluded_terminal;
-use crate::waypoints::{NavaidIdIndex, ReferenceIdIndex, WaypointIdIndex};
+use crate::waypoints::{
+    NavaidIdIndex, ReferenceIdIndex, WaypointIdIndex, source_terminal_ids_to_export,
+};
 
 const PROCEDURE_LEG_JSON_BUFFER_CAPACITY: usize = 16 * 1024;
 
@@ -300,12 +302,15 @@ impl Serialize for SpeedLimitOutput<'_> {
 
 pub(crate) fn export_terminal_legs(
     db_path: &Path,
+    base_json_dir: Option<&Path>,
     start_terminal_id: i64,
     output_dir: &Path,
     waypoint_id_index: &WaypointIdIndex,
     navaid_id_index: &NavaidIdIndex,
 ) -> Result<TerminalLegExportStats> {
-    let excluded_existing_terminal_ids = load_excluded_existing_terminal_ids(output_dir)?;
+    let base_terminal_dir = base_json_dir.unwrap_or(output_dir);
+    let source_terminal_ids = source_terminal_ids_to_export(db_path, Some(base_terminal_dir))?;
+    let excluded_existing_terminal_ids = load_excluded_existing_terminal_ids(base_terminal_dir)?;
     let excluded_source_terminal_ids =
         with_connection(db_path, fetch_excluded_source_terminal_ids)?;
     let cleanup_required = procedure_dir_has_existing_files_from(output_dir, start_terminal_id)?
@@ -323,14 +328,13 @@ pub(crate) fn export_terminal_legs(
         mut detail,
     ) = with_connection(db_path, |conn| {
         let t_terminal_legs = Instant::now();
-        let mut terminal_legs = fetch_terminal_legs(conn, start_terminal_id)?;
-        terminal_legs
-            .retain(|leg| !excluded_source_terminal_ids.contains(&leg.terminal_id));
+        let mut terminal_legs = fetch_terminal_legs(conn, &source_terminal_ids)?;
+        terminal_legs.retain(|leg| !excluded_source_terminal_ids.contains(&leg.terminal_id));
         let db_terminal_legs = t_terminal_legs.elapsed();
 
         let t_terminal_metadata = Instant::now();
         let mut runway_ids_by_terminal =
-            fetch_runway_ids_by_terminal_after_start(conn, start_terminal_id)?;
+            fetch_runway_ids_by_terminal_ids(conn, &source_terminal_ids)?;
         runway_ids_by_terminal
             .retain(|terminal_id, _| !excluded_source_terminal_ids.contains(terminal_id));
         let terminal_ids_for_cleanup = if cleanup_required {
@@ -492,36 +496,47 @@ fn with_connection<T>(db_path: &Path, action: impl FnOnce(&Connection) -> Result
 
 fn fetch_terminal_legs(
     conn: &Connection,
-    start_terminal_id: i64,
+    terminal_ids: &FxHashSet<i64>,
 ) -> Result<Vec<TerminalLegRecord>> {
+    if terminal_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
     let mut statement = conn
         .prepare(
-            "SELECT l.ID, l.TerminalID, l.Type, l.Transition, l.TrackCode, l.WptID, l.WptLat, l.WptLon, l.TurnDir, l.NavID, l.NavLat, l.NavLon, l.NavBear, l.NavDist, l.Course, l.Distance, l.Alt, l.Vnav, l.CenterID, l.CenterLat, l.CenterLon, ex.IsFlyOver, ex.SpeedLimit FROM TerminalLegs l LEFT JOIN TerminalLegsEx ex ON ex.ID = l.ID WHERE l.TerminalID >= ? ORDER BY l.TerminalID, l.ID",
+            "SELECT l.ID, l.TerminalID, l.Type, l.Transition, l.TrackCode, l.WptID, l.WptLat, l.WptLon, l.TurnDir, l.NavID, l.NavLat, l.NavLon, l.NavBear, l.NavDist, l.Course, l.Distance, l.Alt, l.Vnav, l.CenterID, l.CenterLat, l.CenterLon, ex.IsFlyOver, ex.SpeedLimit FROM TerminalLegs l LEFT JOIN TerminalLegsEx ex ON ex.ID = l.ID ORDER BY l.TerminalID, l.ID",
         )
         .context("failed to query TerminalLegs")?;
     let rows = statement
-        .query_map([start_terminal_id], TerminalLegRecord::from_row)
+        .query_map([], TerminalLegRecord::from_row)
         .context("failed to iterate TerminalLegs")?;
-    rows.collect::<rusqlite::Result<Vec<_>>>()
-        .context("failed to read TerminalLegs")
+    let mut terminal_legs = rows
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .context("failed to read TerminalLegs")?;
+    terminal_legs.retain(|leg| terminal_ids.contains(&leg.terminal_id));
+    Ok(terminal_legs)
 }
 
-fn fetch_runway_ids_by_terminal_after_start(
+fn fetch_runway_ids_by_terminal_ids(
     conn: &Connection,
-    start_terminal_id: i64,
+    terminal_ids: &FxHashSet<i64>,
 ) -> Result<FxHashMap<i64, i64>> {
+    if terminal_ids.is_empty() {
+        return Ok(fast_hash_map());
+    }
+
     let mut statement = conn
-        .prepare("SELECT ID, RwyID FROM Terminals WHERE ID >= ? AND RwyID IS NOT NULL")
+        .prepare("SELECT ID, RwyID FROM Terminals WHERE RwyID IS NOT NULL")
         .context("failed to query terminal runway ids")?;
     let rows = statement
-        .query_map([start_terminal_id], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
-        })
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
         .context("failed to iterate terminal runway ids")?;
     let mut runway_ids_by_terminal = fast_hash_map();
     for row in rows {
         let (terminal_id, runway_id) = row.context("failed to read terminal runway id row")?;
-        runway_ids_by_terminal.insert(terminal_id, runway_id);
+        if terminal_ids.contains(&terminal_id) {
+            runway_ids_by_terminal.insert(terminal_id, runway_id);
+        }
     }
     Ok(runway_ids_by_terminal)
 }
@@ -723,12 +738,8 @@ fn recover_missing_rf_center_ids(conn: &Connection, legs: &mut [TerminalLegRecor
                 leg.id
             );
         };
-        let waypoint_id = find_unique_waypoint_id_at_coordinates(
-            conn,
-            &longitude_col,
-            latitude,
-            longitude,
-        )?;
+        let waypoint_id =
+            find_unique_waypoint_id_at_coordinates(conn, &longitude_col, latitude, longitude)?;
         leg.center_id = Value::Number(Number::from(waypoint_id));
         leg.center_id_num = Some(waypoint_id);
     }
@@ -1044,6 +1055,53 @@ mod tests {
         let excluded = fetch_excluded_source_terminal_ids(&connection).unwrap();
 
         assert_eq!(excluded, [174768, 180000].into_iter().collect());
+    }
+
+    #[test]
+    fn terminal_leg_selection_uses_output_terminal_ids_instead_of_a_numeric_threshold() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE TerminalLegs (
+                    ID INTEGER,
+                    TerminalID INTEGER,
+                    Type TEXT,
+                    Transition TEXT,
+                    TrackCode TEXT,
+                    WptID INTEGER,
+                    WptLat REAL,
+                    WptLon REAL,
+                    TurnDir TEXT,
+                    NavID INTEGER,
+                    NavLat REAL,
+                    NavLon REAL,
+                    NavBear REAL,
+                    NavDist REAL,
+                    Course REAL,
+                    Distance REAL,
+                    Alt TEXT,
+                    Vnav REAL,
+                    CenterID INTEGER,
+                    CenterLat REAL,
+                    CenterLon REAL,
+                    WptDescCode TEXT
+                );
+                CREATE TABLE TerminalLegsEx (ID INTEGER, IsFlyOver INTEGER, SpeedLimit INTEGER);",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO TerminalLegs (ID, TerminalID, Type, Transition, TrackCode)
+                 VALUES (1, 35762, '5', 'RW34', 'CF'), (2, 97105, '5', 'RW34', 'CF')",
+                [],
+            )
+            .unwrap();
+
+        let selected_terminal_ids: FxHashSet<i64> = std::iter::once(35762).collect();
+        let terminal_legs = fetch_terminal_legs(&connection, &selected_terminal_ids).unwrap();
+
+        assert_eq!(terminal_legs.len(), 1);
+        assert_eq!(terminal_legs[0].terminal_id, 35762);
     }
 }
 

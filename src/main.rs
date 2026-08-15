@@ -940,6 +940,7 @@ fn export_related_outputs(
             let terminal_leg_start = Instant::now();
             export_terminal_legs(
                 context.db_path,
+                context.base_json_dir,
                 context.start_terminal_id,
                 context.output_dir,
                 &indices.waypoint,

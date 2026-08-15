@@ -410,6 +410,19 @@ pub(crate) fn export_terminals_table(
     })
 }
 
+pub(crate) fn source_terminal_ids_to_export(
+    db_path: &Path,
+    base_json_dir: Option<&Path>,
+) -> Result<FxHashSet<i64>> {
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("failed to open database: {}", db_path.display()))?;
+    configure_read_connection(&conn);
+
+    let db_rows = fetch_table_rows(&conn, "Terminals")?;
+    let existing_rows = load_existing_json_rows(base_json_dir, "Terminals.json")?;
+    Ok(eligible_source_terminal_ids(&db_rows, &existing_rows))
+}
+
 fn build_filtered_terminal_rows(
     db_rows: Vec<Map<String, Value>>,
     existing_rows: Vec<Map<String, Value>>,
@@ -431,11 +444,7 @@ fn build_filtered_terminal_rows(
     let mut appended_rows = db_rows
         .into_iter()
         .filter_map(|mut row| {
-            if is_excluded_terminal_row(&row) {
-                return None;
-            }
-            let keep_row = json_to_i64(row.get("ID")).is_none_or(|id| !existing_ids.contains(&id));
-            if !keep_row {
+            if !source_terminal_row_is_eligible(&row, &existing_ids) {
                 return None;
             }
 
@@ -449,6 +458,36 @@ fn build_filtered_terminal_rows(
     appended_rows.sort_by_key(|row| json_to_i64(row.get("ID")).unwrap_or(i64::MAX));
     kept_existing_rows.append(&mut appended_rows);
     kept_existing_rows
+}
+
+fn eligible_source_terminal_ids(
+    db_rows: &[Map<String, Value>],
+    existing_rows: &[Map<String, Value>],
+) -> FxHashSet<i64> {
+    let existing_ids = existing_rows
+        .iter()
+        .filter(|row| !is_excluded_terminal_row(row))
+        .filter_map(|row| json_to_i64(row.get("ID")))
+        .collect::<FxHashSet<_>>();
+
+    db_rows
+        .iter()
+        .filter(|row| source_terminal_row_is_eligible(row, &existing_ids))
+        .filter_map(|row| json_to_i64(row.get("ID")))
+        .collect()
+}
+
+fn source_terminal_row_is_eligible(
+    row: &Map<String, Value>,
+    existing_ids: &FxHashSet<i64>,
+) -> bool {
+    if is_excluded_terminal_row(row) {
+        return false;
+    }
+    if json_to_i64(row.get("ID")).is_some_and(|id| existing_ids.contains(&id)) {
+        return false;
+    }
+    json_to_i64(row.get("AirportID")).is_some()
 }
 
 fn build_reference_id_index(
@@ -802,6 +841,22 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(ids, vec![6, 11]);
+    }
+
+    #[test]
+    fn source_terminal_ids_include_rows_replacing_excluded_reference_ids() {
+        let source_rows = vec![
+            terminal_row(35762, "ZPJH", "GUKR7W", "GUKR7W"),
+            terminal_row(35763, "ZBAA", "KEEP1A", "KEEP1A"),
+        ];
+        let existing_rows = vec![
+            terminal_row(35762, "ZULS", "DEP10L", "DEP10L"),
+            terminal_row(35763, "KJFK", "KEEP1A", "KEEP1A"),
+        ];
+
+        let source_ids = eligible_source_terminal_ids(&source_rows, &existing_rows);
+
+        assert_eq!(source_ids, std::iter::once(35762).collect());
     }
 
     fn ils_row(id: i64, runway_id: i64, ident: &str, loc_course: f64) -> Map<String, Value> {
