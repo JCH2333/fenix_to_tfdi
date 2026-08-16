@@ -17,7 +17,8 @@ use crate::db_json::{
 use crate::stats::{PhaseDurations, TerminalLegExportStats, TerminalLegTimingBreakdown};
 use crate::terminal_filters::is_excluded_terminal;
 use crate::waypoints::{
-    NavaidIdIndex, ReferenceIdIndex, WaypointIdIndex, source_terminal_ids_to_export,
+    NavaidIdIndex, ReferenceIdIndex, TerminalIdIndex, WaypointIdIndex,
+    source_terminal_id_map_to_export,
 };
 
 const PROCEDURE_LEG_JSON_BUFFER_CAPACITY: usize = 16 * 1024;
@@ -307,9 +308,19 @@ pub(crate) fn export_terminal_legs(
     output_dir: &Path,
     waypoint_id_index: &WaypointIdIndex,
     navaid_id_index: &NavaidIdIndex,
+    terminal_id_index: &TerminalIdIndex,
 ) -> Result<TerminalLegExportStats> {
     let base_terminal_dir = base_json_dir.unwrap_or(output_dir);
-    let source_terminal_ids = source_terminal_ids_to_export(db_path, Some(base_terminal_dir))?;
+    let source_terminal_id_map =
+        source_terminal_id_map_to_export(db_path, Some(base_terminal_dir), terminal_id_index)?;
+    let source_terminal_ids = source_terminal_id_map
+        .keys()
+        .copied()
+        .collect::<FxHashSet<_>>();
+    let output_source_terminal_ids = source_terminal_id_map
+        .values()
+        .copied()
+        .collect::<FxHashSet<_>>();
     let existing_terminal_ids = load_existing_terminal_ids(base_terminal_dir)?;
     let excluded_existing_terminal_ids = load_excluded_existing_terminal_ids(base_terminal_dir)?;
     let excluded_source_terminal_ids =
@@ -331,17 +342,25 @@ pub(crate) fn export_terminal_legs(
         let t_terminal_legs = Instant::now();
         let mut terminal_legs = fetch_terminal_legs(conn, &source_terminal_ids)?;
         terminal_legs.retain(|leg| !excluded_source_terminal_ids.contains(&leg.terminal_id));
+        remap_terminal_leg_terminal_ids(&mut terminal_legs, &source_terminal_id_map);
         let db_terminal_legs = t_terminal_legs.elapsed();
 
         let t_terminal_metadata = Instant::now();
-        let mut runway_ids_by_terminal =
+        let runway_ids_by_source_terminal =
             fetch_runway_ids_by_terminal_ids(conn, &source_terminal_ids)?;
-        runway_ids_by_terminal
-            .retain(|terminal_id, _| !excluded_source_terminal_ids.contains(terminal_id));
+        let mut runway_ids_by_terminal = fast_hash_map();
+        for (source_terminal_id, runway_id) in runway_ids_by_source_terminal {
+            if excluded_source_terminal_ids.contains(&source_terminal_id) {
+                continue;
+            }
+            if let Some(output_terminal_id) = source_terminal_id_map.get(&source_terminal_id) {
+                runway_ids_by_terminal.insert(*output_terminal_id, runway_id);
+            }
+        }
         let terminal_ids_for_cleanup = if cleanup_required {
             Some(cleanup_allowed_terminal_ids(
                 &existing_terminal_ids,
-                &source_terminal_ids,
+                &output_source_terminal_ids,
                 &excluded_existing_terminal_ids,
             ))
         } else {
@@ -485,6 +504,17 @@ fn write_terminal_leg_json_file(
             )
         })
     })
+}
+
+fn remap_terminal_leg_terminal_ids(
+    terminal_legs: &mut [TerminalLegRecord],
+    source_terminal_id_map: &FxHashMap<i64, i64>,
+) {
+    for leg in terminal_legs {
+        if let Some(output_terminal_id) = source_terminal_id_map.get(&leg.terminal_id) {
+            leg.terminal_id = *output_terminal_id;
+        }
+    }
 }
 
 fn with_connection<T>(db_path: &Path, action: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {

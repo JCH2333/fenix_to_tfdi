@@ -85,6 +85,20 @@ final terminal set: retained template terminals plus source terminals selected
 for output. A source terminal rejected by a target-specific filter must not
 delete an unrelated retained template procedure that happens to share its ID.
 
+The terminal ID itself is not a safe merge key. For the China-only source
+patch, a source terminal whose ID collides with a semantically unrelated
+retained template terminal receives a deterministic unused output ID; its
+`ProcedureLegs` file name and every leg `TerminalID` are remapped to that same
+ID. The retained template terminal and its procedure file remain unchanged.
+The adapter only selects source terminals whose ICAO starts with `Z`, so it
+cannot duplicate unrelated global template procedures. This was verified with
+Fenix 2608 `fenix2` at `ZWAT`: all eight SID and eight STAR records were
+previously suppressed by collisions with retained European template IDs; the
+fixed candidate contains all 21 ZWAT procedures and still retains
+`EGJJ / LELN1J / ID 37394`. Regression coverage:
+`source_terminal_id_map_remaps_rows_colliding_with_unrelated_template_ids` and
+`source_terminal_id_map_ignores_non_chinese_source_rows`.
+
 ## Current upstream gaps
 
 The upstream converter used as the initial code base has these confirmed engineering gaps:

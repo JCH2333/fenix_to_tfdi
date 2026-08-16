@@ -29,6 +29,7 @@ pub(crate) type AirportIdIndex = ReferenceIdIndex;
 pub(crate) type IlsIdIndex = ReferenceIdIndex;
 pub(crate) type NavaidIdIndex = ReferenceIdIndex;
 pub(crate) type RunwayIdIndex = ReferenceIdIndex;
+pub(crate) type TerminalIdIndex = ReferenceIdIndex;
 pub(crate) type WaypointIdIndex = ReferenceIdIndex;
 
 impl ReferenceIdIndex {
@@ -135,6 +136,44 @@ pub(crate) fn build_waypoint_id_index(
         &["Ident", "Latitude", "Longitude"],
         &[],
     )
+}
+
+pub(crate) fn build_terminal_id_index(
+    db_path: &Path,
+    base_json_dir: Option<&Path>,
+    airport_id_index: &AirportIdIndex,
+    runway_id_index: &RunwayIdIndex,
+) -> Result<TerminalIdIndex> {
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("failed to open database: {}", db_path.display()))?;
+    configure_read_connection(&conn);
+
+    let mut source_rows = fetch_table_rows(&conn, "Terminals")?;
+    source_rows.retain(source_terminal_row_is_candidate);
+    for row in &mut source_rows {
+        apply_foreign_key_remaps(
+            row,
+            &[
+                ForeignKeyRemap {
+                    column_name: "AirportID",
+                    index: airport_id_index,
+                },
+                ForeignKeyRemap {
+                    column_name: "RwyID",
+                    index: runway_id_index,
+                },
+            ],
+        );
+    }
+    sort_rows_by_id(&mut source_rows);
+
+    let existing_rows =
+        retained_terminal_rows(load_existing_json_rows(base_json_dir, "Terminals.json")?);
+    Ok(build_reference_id_index_from_rows(
+        &source_rows,
+        &existing_rows,
+        &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
+    ))
 }
 
 pub(crate) fn export_airports_table(
@@ -356,6 +395,7 @@ pub(crate) fn export_terminals_table(
     base_json_dir: Option<&Path>,
     airport_id_index: &AirportIdIndex,
     runway_id_index: &RunwayIdIndex,
+    terminal_id_index: &TerminalIdIndex,
     _preloaded_existing_index: Option<&ExistingJsonIndex>,
 ) -> Result<TableExportStats> {
     let conn = Connection::open(db_path)
@@ -375,6 +415,7 @@ pub(crate) fn export_terminals_table(
     let formatted_rows = build_filtered_terminal_rows(
         rows,
         existing_rows,
+        terminal_id_index,
         &[
             ForeignKeyRemap {
                 column_name: "AirportID",
@@ -410,48 +451,48 @@ pub(crate) fn export_terminals_table(
     })
 }
 
-pub(crate) fn source_terminal_ids_to_export(
+pub(crate) fn source_terminal_id_map_to_export(
     db_path: &Path,
     base_json_dir: Option<&Path>,
-) -> Result<FxHashSet<i64>> {
+    terminal_id_index: &TerminalIdIndex,
+) -> Result<FxHashMap<i64, i64>> {
     let conn = Connection::open(db_path)
         .with_context(|| format!("failed to open database: {}", db_path.display()))?;
     configure_read_connection(&conn);
 
     let db_rows = fetch_table_rows(&conn, "Terminals")?;
     let existing_rows = load_existing_json_rows(base_json_dir, "Terminals.json")?;
-    Ok(eligible_source_terminal_ids(&db_rows, &existing_rows))
+    Ok(source_terminal_id_map_from_rows(
+        &db_rows,
+        &existing_rows,
+        terminal_id_index,
+    ))
 }
 
 fn build_filtered_terminal_rows(
     db_rows: Vec<Map<String, Value>>,
     existing_rows: Vec<Map<String, Value>>,
+    terminal_id_index: &TerminalIdIndex,
     foreign_key_remaps: &[ForeignKeyRemap<'_>],
 ) -> Vec<Map<String, Value>> {
-    let mut kept_existing_rows = existing_rows
-        .into_iter()
-        .map(|mut row| {
-            normalize_row_numbers_for_table(&mut row, "Terminals");
-            row
-        })
-        .filter(|row| !is_excluded_terminal_row(row))
-        .collect::<Vec<_>>();
-    let existing_ids = kept_existing_rows
-        .iter()
-        .filter_map(|row| json_to_i64(row.get("ID")))
-        .collect::<FxHashSet<_>>();
+    let mut kept_existing_rows = retained_terminal_rows(existing_rows);
+    let source_terminal_id_map =
+        source_terminal_id_map_from_rows(&db_rows, &kept_existing_rows, terminal_id_index);
 
     let mut appended_rows = db_rows
         .into_iter()
         .filter_map(|mut row| {
-            if !source_terminal_row_is_eligible(&row, &existing_ids) {
-                return None;
-            }
+            let source_terminal_id = json_to_i64(row.get("ID"))?;
+            let output_terminal_id = source_terminal_id_map.get(&source_terminal_id)?;
 
             apply_foreign_key_remaps(&mut row, foreign_key_remaps);
             if json_to_i64(row.get("AirportID")).is_none() {
                 return None;
             }
+            row.insert(
+                "ID".to_string(),
+                Value::Number(Number::from(*output_terminal_id)),
+            );
             Some(format_row(row, "Terminals", None))
         })
         .collect::<Vec<_>>();
@@ -460,34 +501,57 @@ fn build_filtered_terminal_rows(
     kept_existing_rows
 }
 
-fn eligible_source_terminal_ids(
+fn source_terminal_id_map_from_rows(
     db_rows: &[Map<String, Value>],
     existing_rows: &[Map<String, Value>],
-) -> FxHashSet<i64> {
+    terminal_id_index: &TerminalIdIndex,
+) -> FxHashMap<i64, i64> {
     let existing_ids = existing_rows
         .iter()
         .filter(|row| !is_excluded_terminal_row(row))
         .filter_map(|row| json_to_i64(row.get("ID")))
         .collect::<FxHashSet<_>>();
+    let mut seen_output_ids = existing_ids;
+    let mut sorted_rows = db_rows.iter().collect::<Vec<_>>();
+    sorted_rows.sort_by_key(|row| json_to_i64(row.get("ID")).unwrap_or(i64::MAX));
 
-    db_rows
-        .iter()
-        .filter(|row| source_terminal_row_is_eligible(row, &existing_ids))
-        .filter_map(|row| json_to_i64(row.get("ID")))
+    let mut selected = fast_hash_map_with_capacity(sorted_rows.len());
+    for row in sorted_rows {
+        if !source_terminal_row_is_candidate(row) {
+            continue;
+        }
+        let Some(source_terminal_id) = json_to_i64(row.get("ID")) else {
+            continue;
+        };
+        let output_terminal_id = terminal_id_index.output_id_for_db(source_terminal_id);
+        if seen_output_ids.insert(output_terminal_id) {
+            selected.insert(source_terminal_id, output_terminal_id);
+        }
+    }
+    selected
+}
+
+fn source_terminal_row_is_candidate(row: &Map<String, Value>) -> bool {
+    !is_excluded_terminal_row(row)
+        && json_to_i64(row.get("AirportID")).is_some()
+        && row
+            .get("ICAO")
+            .and_then(Value::as_str)
+            .is_some_and(|icao| icao.trim().to_ascii_uppercase().starts_with('Z'))
+}
+
+fn retained_terminal_rows(rows: Vec<Map<String, Value>>) -> Vec<Map<String, Value>> {
+    rows.into_iter()
+        .map(|mut row| {
+            normalize_row_numbers_for_table(&mut row, "Terminals");
+            row
+        })
+        .filter(|row| !is_excluded_terminal_row(row))
         .collect()
 }
 
-fn source_terminal_row_is_eligible(
-    row: &Map<String, Value>,
-    existing_ids: &FxHashSet<i64>,
-) -> bool {
-    if is_excluded_terminal_row(row) {
-        return false;
-    }
-    if json_to_i64(row.get("ID")).is_some_and(|id| existing_ids.contains(&id)) {
-        return false;
-    }
-    json_to_i64(row.get("AirportID")).is_some()
+fn sort_rows_by_id(rows: &mut [Map<String, Value>]) {
+    rows.sort_by_key(|row| json_to_i64(row.get("ID")).unwrap_or(i64::MAX));
 }
 
 fn build_reference_id_index(
@@ -834,7 +898,8 @@ mod tests {
             terminal_row(6, "ZSPD", "KEEP1A", "KEEP1A"),
         ];
 
-        let merged = build_filtered_terminal_rows(db_rows, existing_rows, &[]);
+        let merged =
+            build_filtered_terminal_rows(db_rows, existing_rows, &ReferenceIdIndex::default(), &[]);
         let ids = merged
             .iter()
             .filter_map(|row| json_to_i64(row.get("ID")))
@@ -844,7 +909,7 @@ mod tests {
     }
 
     #[test]
-    fn source_terminal_ids_include_rows_replacing_excluded_reference_ids() {
+    fn source_terminal_id_map_keeps_rows_replacing_excluded_reference_ids() {
         let source_rows = vec![
             terminal_row(35762, "ZPJH", "GUKR7W", "GUKR7W"),
             terminal_row(35763, "ZBAA", "KEEP1A", "KEEP1A"),
@@ -854,9 +919,52 @@ mod tests {
             terminal_row(35763, "KJFK", "KEEP1A", "KEEP1A"),
         ];
 
-        let source_ids = eligible_source_terminal_ids(&source_rows, &existing_rows);
+        let index = build_reference_id_index_from_rows(
+            &source_rows,
+            &retained_terminal_rows(existing_rows.clone()),
+            &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
+        );
+        let source_ids = source_terminal_id_map_from_rows(&source_rows, &existing_rows, &index);
 
-        assert_eq!(source_ids, std::iter::once(35762).collect());
+        assert_eq!(source_ids, std::iter::once((35762, 35762)).collect());
+    }
+
+    #[test]
+    fn source_terminal_id_map_remaps_rows_colliding_with_unrelated_template_ids() {
+        let source_rows = vec![terminal_row(37394, "ZWAT", "KNS08D", "KNS08D")];
+        let existing_rows = vec![terminal_row(37394, "EGJJ", "LELN1J", "LELN1J")];
+
+        let index = build_reference_id_index_from_rows(
+            &source_rows,
+            &retained_terminal_rows(existing_rows.clone()),
+            &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
+        );
+        let source_ids = source_terminal_id_map_from_rows(&source_rows, &existing_rows, &index);
+        let merged = build_filtered_terminal_rows(source_rows, existing_rows, &index, &[]);
+
+        assert_eq!(source_ids, std::iter::once((37394, 37395)).collect());
+        assert!(merged.iter().any(|row| {
+            json_to_i64(row.get("ID")) == Some(37394)
+                && row.get("ICAO") == Some(&Value::String("EGJJ".to_string()))
+        }));
+        assert!(merged.iter().any(|row| {
+            json_to_i64(row.get("ID")) == Some(37395)
+                && row.get("ICAO") == Some(&Value::String("ZWAT".to_string()))
+        }));
+    }
+
+    #[test]
+    fn source_terminal_id_map_ignores_non_chinese_source_rows() {
+        let source_rows = vec![terminal_row(37394, "EGJJ", "LELN1J", "LELN1J")];
+        let index = build_reference_id_index_from_rows(
+            &source_rows,
+            &[],
+            &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
+        );
+
+        let source_ids = source_terminal_id_map_from_rows(&source_rows, &[], &index);
+
+        assert!(source_ids.is_empty());
     }
 
     fn ils_row(id: i64, runway_id: i64, ident: &str, loc_course: f64) -> Map<String, Value> {
