@@ -99,6 +99,12 @@ fixed candidate contains all 21 ZWAT procedures and still retains
 `source_terminal_id_map_remaps_rows_colliding_with_unrelated_template_ids` and
 `source_terminal_id_map_ignores_non_chinese_source_rows`.
 
+The adapter builds this terminal export plan before writing any candidate JSON.
+`Terminals.json` and `ProcedureLegs` receive the same immutable source-to-output
+terminal-ID map, so a normal conversion creates the final candidate in one run.
+It must not generate a candidate first and then patch terminal records or
+procedure files from that generated output.
+
 ## Current upstream gaps
 
 The upstream converter used as the initial code base has these confirmed engineering gaps:

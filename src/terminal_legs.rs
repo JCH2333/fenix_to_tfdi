@@ -16,10 +16,7 @@ use crate::db_json::{
 };
 use crate::stats::{PhaseDurations, TerminalLegExportStats, TerminalLegTimingBreakdown};
 use crate::terminal_filters::is_excluded_terminal;
-use crate::waypoints::{
-    NavaidIdIndex, ReferenceIdIndex, TerminalIdIndex, WaypointIdIndex,
-    source_terminal_id_map_to_export,
-};
+use crate::waypoints::{NavaidIdIndex, ReferenceIdIndex, TerminalExportPlan, WaypointIdIndex};
 
 const PROCEDURE_LEG_JSON_BUFFER_CAPACITY: usize = 16 * 1024;
 
@@ -308,11 +305,10 @@ pub(crate) fn export_terminal_legs(
     output_dir: &Path,
     waypoint_id_index: &WaypointIdIndex,
     navaid_id_index: &NavaidIdIndex,
-    terminal_id_index: &TerminalIdIndex,
+    terminal_export_plan: &TerminalExportPlan,
 ) -> Result<TerminalLegExportStats> {
     let base_terminal_dir = base_json_dir.unwrap_or(output_dir);
-    let source_terminal_id_map =
-        source_terminal_id_map_to_export(db_path, Some(base_terminal_dir), terminal_id_index)?;
+    let source_terminal_id_map = terminal_export_plan.source_id_to_output_id();
     let source_terminal_ids = source_terminal_id_map
         .keys()
         .copied()

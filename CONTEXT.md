@@ -2,11 +2,18 @@
 
 ## Purpose
 
-Generate a testable TFDI MD-11 navigation-data candidate from the supplied 2607 source data and Fenix `nd.db3`, while preserving TFDI-specific runtime contracts from an official `Nav-Primary` template.
+Generate a testable TFDI MD-11 navigation-data candidate from the active Fenix
+`nd.db3` and matching `RTE_SEG.csv`, while preserving TFDI-specific runtime
+contracts from an official `Nav-Primary` template. The 2607 raw snapshot is
+reserved for the long-term normalized model and conservative ILS-reference
+matching; it is not a substitute for the active-cycle content source.
 
 ## Domain language
 
-- **Raw source**: the files under `2607`, plus the supplied Fenix `nd.db3` while the complete 2607 parser is being built. Raw source data is content, not a target schema.
+- **Raw source**: the active Fenix `nd.db3` and matching `RTE_SEG.csv`; the
+  2607 files are a historical source snapshot and ILS-reference input while the
+  complete normalized parser is being built. Raw source data is content, not a
+  target schema.
 - **Normalized model**: target-independent airports, runways, fixes, navaids, airways, procedures, holdings, communications, airspace, and MORA with source precision and provenance retained.
 - **TFDI adapter**: the only layer allowed to apply TFDI JSON field names, IDs, null rules, lookup layout, procedure filenames, and deployment paths.
 - **Official template**: a known-working TFDI `Nav-Primary` directory used to identify the target runtime contract and preserve non-China global data. It is not a navigation-content source.
@@ -23,8 +30,11 @@ Generate a testable TFDI MD-11 navigation-data candidate from the supplied 2607 
 5. Candidate generation never writes directly into the active simulator directory.
 6. Deployment requires a stopped simulator, timestamped backup, and post-copy hash verification.
 7. Official databases, simulator binaries, diagnostics, decompiler output, test packages, and generated navigation data are never committed.
+8. A conversion builds all source-repair and identity decisions before any
+   candidate JSON is written. `Terminals.json` and `ProcedureLegs` consume the
+   same terminal export plan; generated output is never read back for an
+   ad-hoc repair pass.
 
 ## Verified target contract
 
 See `docs/tfdi-contract.md` for the inspected TFDI runtime, load order, JSON shapes, cycle metadata, and point-check baseline.
-

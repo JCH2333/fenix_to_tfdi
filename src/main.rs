@@ -37,9 +37,9 @@ use stats::{
 use tables::{ExistingJsonIndex, export_table_to_json, preload_existing_table_indices};
 use terminal_legs::export_terminal_legs;
 use waypoints::{
-    AirportIdIndex, IlsIdIndex, NavaidIdIndex, RunwayIdIndex, TerminalIdIndex, WaypointIdIndex,
+    AirportIdIndex, IlsIdIndex, NavaidIdIndex, RunwayIdIndex, TerminalExportPlan, WaypointIdIndex,
     build_airport_id_index, build_ils_id_index, build_navaid_id_index, build_runway_id_index,
-    build_terminal_id_index, build_waypoint_id_index, export_airport_lookup_table,
+    build_terminal_export_plan, build_waypoint_id_index, export_airport_lookup_table,
     export_airports_table, export_ilses_table, export_navaid_lookup_table, export_navaids_table,
     export_runways_table, export_terminals_table, export_waypoint_lookup_table,
     export_waypoints_table,
@@ -129,7 +129,7 @@ struct ReferenceIdIndices {
     airport: AirportIdIndex,
     runway: RunwayIdIndex,
     ils: IlsIdIndex,
-    terminal: TerminalIdIndex,
+    terminal: TerminalExportPlan,
     waypoint: WaypointIdIndex,
     navaid: NavaidIdIndex,
 }
@@ -897,7 +897,7 @@ fn build_reference_id_indices(
     );
     let (airport, runway, ils) = airport_chain_result?;
     let (waypoint, navaid) = waypoint_and_navaid_result?;
-    let terminal = build_terminal_id_index(db_path, base_json_dir, &airport, &runway)?;
+    let terminal = build_terminal_export_plan(db_path, base_json_dir, &airport, &runway)?;
 
     Ok(ReferenceIdIndices {
         airport,

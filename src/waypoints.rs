@@ -32,6 +32,18 @@ pub(crate) type RunwayIdIndex = ReferenceIdIndex;
 pub(crate) type TerminalIdIndex = ReferenceIdIndex;
 pub(crate) type WaypointIdIndex = ReferenceIdIndex;
 
+#[derive(Clone, Debug)]
+pub(crate) struct TerminalExportPlan {
+    source_id_to_output_id: FxHashMap<i64, i64>,
+}
+
+impl TerminalExportPlan {
+    #[must_use]
+    pub(crate) fn source_id_to_output_id(&self) -> &FxHashMap<i64, i64> {
+        &self.source_id_to_output_id
+    }
+}
+
 impl ReferenceIdIndex {
     #[must_use]
     pub(crate) fn output_id_for_db(&self, db_id: i64) -> i64 {
@@ -174,6 +186,21 @@ pub(crate) fn build_terminal_id_index(
         &existing_rows,
         &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
     ))
+}
+
+pub(crate) fn build_terminal_export_plan(
+    db_path: &Path,
+    base_json_dir: Option<&Path>,
+    airport_id_index: &AirportIdIndex,
+    runway_id_index: &RunwayIdIndex,
+) -> Result<TerminalExportPlan> {
+    let terminal_id_index =
+        build_terminal_id_index(db_path, base_json_dir, airport_id_index, runway_id_index)?;
+    let source_id_to_output_id =
+        source_terminal_id_map_to_export(db_path, base_json_dir, &terminal_id_index)?;
+    Ok(TerminalExportPlan {
+        source_id_to_output_id,
+    })
 }
 
 pub(crate) fn export_airports_table(
@@ -395,7 +422,7 @@ pub(crate) fn export_terminals_table(
     base_json_dir: Option<&Path>,
     airport_id_index: &AirportIdIndex,
     runway_id_index: &RunwayIdIndex,
-    terminal_id_index: &TerminalIdIndex,
+    terminal_export_plan: &TerminalExportPlan,
     _preloaded_existing_index: Option<&ExistingJsonIndex>,
 ) -> Result<TableExportStats> {
     let conn = Connection::open(db_path)
@@ -415,7 +442,7 @@ pub(crate) fn export_terminals_table(
     let formatted_rows = build_filtered_terminal_rows(
         rows,
         existing_rows,
-        terminal_id_index,
+        terminal_export_plan.source_id_to_output_id(),
         &[
             ForeignKeyRemap {
                 column_name: "AirportID",
@@ -451,7 +478,7 @@ pub(crate) fn export_terminals_table(
     })
 }
 
-pub(crate) fn source_terminal_id_map_to_export(
+fn source_terminal_id_map_to_export(
     db_path: &Path,
     base_json_dir: Option<&Path>,
     terminal_id_index: &TerminalIdIndex,
@@ -472,12 +499,10 @@ pub(crate) fn source_terminal_id_map_to_export(
 fn build_filtered_terminal_rows(
     db_rows: Vec<Map<String, Value>>,
     existing_rows: Vec<Map<String, Value>>,
-    terminal_id_index: &TerminalIdIndex,
+    source_terminal_id_map: &FxHashMap<i64, i64>,
     foreign_key_remaps: &[ForeignKeyRemap<'_>],
 ) -> Vec<Map<String, Value>> {
     let mut kept_existing_rows = retained_terminal_rows(existing_rows);
-    let source_terminal_id_map =
-        source_terminal_id_map_from_rows(&db_rows, &kept_existing_rows, terminal_id_index);
 
     let mut appended_rows = db_rows
         .into_iter()
@@ -898,8 +923,13 @@ mod tests {
             terminal_row(6, "ZSPD", "KEEP1A", "KEEP1A"),
         ];
 
+        let source_terminal_id_map = source_terminal_id_map_from_rows(
+            &db_rows,
+            &existing_rows,
+            &ReferenceIdIndex::default(),
+        );
         let merged =
-            build_filtered_terminal_rows(db_rows, existing_rows, &ReferenceIdIndex::default(), &[]);
+            build_filtered_terminal_rows(db_rows, existing_rows, &source_terminal_id_map, &[]);
         let ids = merged
             .iter()
             .filter_map(|row| json_to_i64(row.get("ID")))
@@ -940,7 +970,7 @@ mod tests {
             &["AirportID", "Proc", "FullName", "Name", "Rwy", "RwyID"],
         );
         let source_ids = source_terminal_id_map_from_rows(&source_rows, &existing_rows, &index);
-        let merged = build_filtered_terminal_rows(source_rows, existing_rows, &index, &[]);
+        let merged = build_filtered_terminal_rows(source_rows, existing_rows, &source_ids, &[]);
 
         assert_eq!(source_ids, std::iter::once((37394, 37395)).collect());
         assert!(merged.iter().any(|row| {
