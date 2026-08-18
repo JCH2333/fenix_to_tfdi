@@ -71,7 +71,6 @@ struct TerminalLegRecord {
     distance: Value,
     alt: Value,
     vnav: Value,
-    vnav_num: Option<f64>,
     center_id: Value,
     center_id_num: Option<i64>,
     center_lat: Value,
@@ -80,6 +79,7 @@ struct TerminalLegRecord {
     is_fly_over_num: Option<i64>,
     speed_limit: Value,
     speed_limit_num: Option<i64>,
+    wpt_desc_code: Value,
     is_faf: i64,
     is_map: i64,
 }
@@ -95,6 +95,7 @@ impl TerminalLegRecord {
         let center_id = normalize_numberish_json(&sql_value_to_json(row.get(18)?));
         let is_fly_over = normalize_numberish_json(&sql_value_to_json(row.get(21)?));
         let speed_limit = normalize_numberish_json(&sql_value_to_json(row.get(22)?));
+        let wpt_desc_code = sql_value_to_json(row.get(23)?);
         let is_map = matches!(&alt, Value::String(text) if text == "MAP");
         Ok(Self {
             id,
@@ -117,7 +118,6 @@ impl TerminalLegRecord {
             course: normalize_numberish_json(&sql_value_to_json(row.get(14)?)),
             distance: normalize_numberish_json(&sql_value_to_json(row.get(15)?)),
             alt,
-            vnav_num: parse_vnav(Some(&vnav)),
             vnav,
             center_id_num: json_to_i64(Some(&center_id)),
             center_id,
@@ -127,6 +127,7 @@ impl TerminalLegRecord {
             is_fly_over,
             speed_limit_num: json_to_i64(Some(&speed_limit)),
             speed_limit,
+            wpt_desc_code,
             is_faf: 0,
             is_map: if is_map { -1 } else { 0 },
         })
@@ -179,10 +180,6 @@ impl TerminalLegRecord {
             self.nav_lat = rounded_number_value(coords.0);
             self.nav_lon = rounded_number_value(coords.1);
         }
-    }
-
-    const fn vnav(&self) -> Option<f64> {
-        self.vnav_num
     }
 
     fn remap_reference_ids(
@@ -530,7 +527,7 @@ fn fetch_terminal_legs(
 
     let mut statement = conn
         .prepare(
-            "SELECT l.ID, l.TerminalID, l.Type, l.Transition, l.TrackCode, l.WptID, l.WptLat, l.WptLon, l.TurnDir, l.NavID, l.NavLat, l.NavLon, l.NavBear, l.NavDist, l.Course, l.Distance, l.Alt, l.Vnav, l.CenterID, l.CenterLat, l.CenterLon, ex.IsFlyOver, ex.SpeedLimit FROM TerminalLegs l LEFT JOIN TerminalLegsEx ex ON ex.ID = l.ID ORDER BY l.TerminalID, l.ID",
+            "SELECT l.ID, l.TerminalID, l.Type, l.Transition, l.TrackCode, l.WptID, l.WptLat, l.WptLon, l.TurnDir, l.NavID, l.NavLat, l.NavLon, l.NavBear, l.NavDist, l.Course, l.Distance, l.Alt, l.Vnav, l.CenterID, l.CenterLat, l.CenterLon, ex.IsFlyOver, ex.SpeedLimit, l.WptDescCode FROM TerminalLegs l LEFT JOIN TerminalLegsEx ex ON ex.ID = l.ID ORDER BY l.TerminalID, l.ID",
         )
         .context("failed to query TerminalLegs")?;
     let rows = statement
@@ -962,43 +959,54 @@ fn rounded_number_value(value: f64) -> Value {
 }
 
 fn mark_final_approach_fix(legs: &mut [TerminalLegRecord]) {
-    if legs.len() < 3 {
+    for leg in legs.iter_mut() {
+        leg.is_faf = 0;
+    }
+
+    // Fenix stores arrival transitions, the primary approach, and the missed
+    // approach in one TerminalID.  Never infer a FAF across those boundaries:
+    // doing so can mark the last arrival-transition leg as FAF and make the
+    // TFDI loader treat the missed approach as a continuation of the wrong
+    // branch.  WptDescCode is the source-of-truth marker when it is present.
+    let Some(primary_type) = legs.iter().find_map(|leg| match &leg.leg_type {
+        Value::String(value) if value != "A" => Some(value.clone()),
+        _ => None,
+    }) else {
+        return;
+    };
+
+    let Some(primary_start) = legs
+        .iter()
+        .position(|leg| matches!(&leg.leg_type, Value::String(value) if value == &primary_type))
+    else {
+        return;
+    };
+    let primary_end = legs[primary_start..]
+        .iter()
+        .position(|leg| leg.is_map == -1)
+        .map_or(legs.len(), |offset| primary_start + offset);
+    if primary_start >= primary_end {
         return;
     }
 
-    let mut prefix_valid = legs[0]
-        .vnav()
-        .map_or_else(|| legs[0].vnav.is_null(), |value| value < 2.5);
+    let approach = &mut legs[primary_start..primary_end];
+    if let Some(leg) = approach.iter_mut().find(|leg| leg.has_faf_descriptor()) {
+        leg.is_faf = -1;
+        return;
+    }
 
-    for index in 1..(legs.len() - 1) {
-        let current_valid = legs[index]
-            .vnav()
-            .map_or_else(|| legs[index].vnav.is_null(), |value| value < 2.5);
-        prefix_valid = prefix_valid && current_valid;
-        if !prefix_valid {
-            continue;
-        }
-        if let Some(next_vnav) = legs[index + 1].vnav()
-            && next_vnav > 2.5
-        {
-            legs[index].is_faf = -1;
-        }
+    // A few Fenix rows have no explicit FAF descriptor.  Keep the fallback
+    // inside the primary approach and prefer its first leg; this is safer than
+    // the old cross-transition VNAV heuristic and still gives TFDI a stable
+    // FAF for those minimal procedures.
+    if let Some(first) = approach.first_mut() {
+        first.is_faf = -1;
     }
 }
 
-fn parse_vnav(value: Option<&Value>) -> Option<f64> {
-    match value? {
-        Value::Number(number) => number.as_f64(),
-        Value::String(text) => {
-            if text.chars().filter(|ch| *ch == '.').count() <= 1
-                && text.chars().all(|ch| ch.is_ascii_digit() || ch == '.')
-            {
-                text.parse::<f64>().ok()
-            } else {
-                None
-            }
-        }
-        _ => None,
+impl TerminalLegRecord {
+    fn has_faf_descriptor(&self) -> bool {
+        matches!(&self.wpt_desc_code, Value::String(value) if value.contains('F'))
     }
 }
 
@@ -1015,6 +1023,90 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("{prefix}_{unique}"));
         fs::create_dir_all(dir.join("ProcedureLegs")).expect("create ProcedureLegs");
         dir
+    }
+
+    fn test_leg(
+        id: i64,
+        leg_type: &str,
+        descriptor: Option<&str>,
+        alt: Option<&str>,
+        vnav: Option<f64>,
+    ) -> TerminalLegRecord {
+        let alt_value = alt.map_or(Value::Null, |value| Value::String(value.to_string()));
+        TerminalLegRecord {
+            id,
+            terminal_id: 1,
+            leg_type: Value::String(leg_type.to_string()),
+            transition: Value::Null,
+            track_code: Value::String("TF".to_string()),
+            wpt_id: Value::Null,
+            wpt_id_num: None,
+            wpt_lat: Value::Null,
+            wpt_lon: Value::Null,
+            turn_dir: Value::Null,
+            nav_id: Value::Null,
+            nav_id_num: None,
+            nav_lat: Value::Null,
+            nav_lon: Value::Null,
+            nav_bear: Value::Null,
+            nav_dist: Value::Null,
+            course: Value::Null,
+            distance: Value::Null,
+            alt: alt_value.clone(),
+            vnav: vnav.map_or(Value::Null, |value| {
+                Value::Number(Number::from_f64(value).expect("finite test VNAV"))
+            }),
+            center_id: Value::Null,
+            center_id_num: None,
+            center_lat: Value::Null,
+            center_lon: Value::Null,
+            is_fly_over: Value::Null,
+            is_fly_over_num: None,
+            speed_limit: Value::Null,
+            speed_limit_num: None,
+            wpt_desc_code: descriptor.map_or(Value::Null, |value| Value::String(value.to_string())),
+            is_faf: 0,
+            is_map: if alt_value == Value::String("MAP".to_string()) {
+                -1
+            } else {
+                0
+            },
+        }
+    }
+
+    #[test]
+    fn faf_descriptor_does_not_leak_from_arrival_transition_into_primary_approach() {
+        let mut legs = vec![
+            test_leg(1, "A", Some("E  F"), Some("11000"), None),
+            test_leg(2, "A", Some("E  S"), Some("10000"), Some(3.0)),
+            test_leg(3, "I", Some("E  I"), Some("09000"), None),
+            test_leg(4, "I", Some("E  F"), Some("08000"), Some(3.0)),
+            test_leg(5, "I", Some("GY M"), Some("MAP"), Some(3.0)),
+            test_leg(6, "I", Some("E  F"), Some("10000"), None),
+        ];
+
+        mark_final_approach_fix(&mut legs);
+
+        assert_eq!(legs[0].is_faf, 0);
+        assert_eq!(legs[3].is_faf, -1);
+        assert_eq!(legs[5].is_faf, 0);
+    }
+
+    #[test]
+    fn missing_primary_faf_descriptor_falls_back_before_map() {
+        let mut legs = vec![
+            test_leg(1, "A", Some("E  F"), Some("13600"), None),
+            test_leg(2, "A", Some("E  S"), Some("12990"), Some(2.8)),
+            test_leg(3, "R", Some("E  S"), Some("11880"), Some(2.8)),
+            test_leg(4, "R", Some("EY M"), Some("MAP"), Some(2.8)),
+            test_leg(5, "R", Some("E  F"), Some("10000"), None),
+        ];
+
+        mark_final_approach_fix(&mut legs);
+
+        assert_eq!(legs[0].is_faf, 0);
+        assert_eq!(legs[2].is_faf, -1);
+        assert_eq!(legs[4].is_faf, 0);
     }
 
     #[test]
@@ -1045,7 +1137,7 @@ mod tests {
         let connection = Connection::open_in_memory().unwrap();
         let record = connection
             .query_row(
-                "SELECT 1, 2, '5', 'ALL', 'IF', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL",
+                "SELECT 1, 2, '5', 'ALL', 'IF', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL",
                 [],
                 TerminalLegRecord::from_row,
             )

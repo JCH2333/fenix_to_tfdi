@@ -72,6 +72,19 @@ the converter resolves the coordinates to the unique Fenix waypoint before remap
 Candidates reject any RF leg without a valid center waypoint reference. This rule is
 covered by the terminal-leg coordinate lookup test and the TFDI candidate validator test.
 
+## IAP 主进近与复飞边界
+
+TFDI 的官方 `ProcedureLegs\TermID_<ID>.json` 会在同一个终端程序数组中按顺序保留进场过渡、主进近和复飞段；它们并不应拆成独立程序文件。复飞边界由主进近中的 `IsMAP=-1` 表示，`MAP` 之后的航段仍属于同一 `TerminalID`。
+
+Fenix 2608 `fenix2` 的 `TerminalLegs.WptDescCode` 提供了 FAF 标识。与官方 TFDI 2608 无 NAIP 模板在 `ZUXC` 的 `D18`、`D36`、`I36`、`Q18`、`Q36` 文件逐段比对后，带 `F` 描述标识的主进近腿正是官方写入 `IsFAF=-1` 的腿。转换器必须：
+
+- 先跳过 `Type="A"` 的进场过渡，选择第一个非 `A` 的主进近类型；
+- 只在该主进近类型的首条 `MAP` 之前查找 FAF 描述标识；
+- 不得把过渡段或 MAP 后复飞段标为 FAF；
+- 少数源程序没有主进近 FAF 描述标识时，保守地把主进近的第一条腿标为 FAF，而不是跨段从前序过渡推断。
+
+此前的跨整份文件 VNAV 启发式会在 `ZUNZ / R23 RNAV 23` 等长过渡程序中把 `IsFAF=-1` 标到 `DUMIX` 等 `Type="A"` 航段，使主进近缺少 FAF，可能造成 FMS 的进近/复飞分支错误。自动化回归测试：`faf_descriptor_does_not_leak_from_arrival_transition_into_primary_approach` 和 `missing_primary_faf_descriptor_falls_back_before_map`。
+
 ## Procedure-file exception
 
 The official 2608 no-NAIP `Nav-Primary` baseline was checked on 2026-08-15.
